@@ -35,7 +35,8 @@ SCHEMA_PATH = os.path.join(
 #   4  canonical-timestamp CHECK constraints on every compared column
 #   5  resolutions revised not replaced; scores keyed by resolution revision
 #   6  declared evaluation plans and recorded looks (alpha spending)
-SCHEMA_VERSION = 6
+#   7  reference classes store exposure_units, so hazard forecasts reconstruct
+SCHEMA_VERSION = 7
 
 
 class LedgerError(RuntimeError):
@@ -259,18 +260,18 @@ def reconstruct(con: sqlite3.Connection, forecast_hash: str) -> dict:
         raise LedgerError(f"no forecast {forecast_hash[:12]}...")
     row = dict(zip([d[0] for d in cur.description], r))
 
+    # exposure_units is included because without it a deadline-aware forecast
+    # cannot be recomputed: the hazard is (k + alpha) / (exposure + alpha + beta),
+    # and a reconstruction missing the denominator would silently fall back to
+    # the static rate -- the estimator section 5.3 exists to reject.
+    rc_cols = ["class_name", "version", "n", "k", "alpha", "beta",
+               "exposure_units", "exposure_unit_name", "exposure_window_days",
+               "censoring_note", "frozen_at", "selection_rule_ref"]
     rc = con.execute(
-        "SELECT class_name, version, n, k, alpha, beta, frozen_at, selection_rule_ref "
-        "FROM reference_class_versions WHERE id = ?",
+        f"SELECT {', '.join(rc_cols)} FROM reference_class_versions WHERE id = ?",
         (row["reference_class_version_id"],),
     ).fetchone()
-    row["reference_class"] = dict(
-        zip(
-            ["class_name", "version", "n", "k", "alpha", "beta", "frozen_at",
-             "selection_rule_ref"],
-            rc,
-        )
-    ) if rc else None
+    row["reference_class"] = dict(zip(rc_cols, rc)) if rc else None
 
     row["effects_at_decision"] = (
         effects_available_at(con, row["contract_id"], row["created_at"])

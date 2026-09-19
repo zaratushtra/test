@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 646 checks across 12 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 688 checks across 13 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -282,6 +282,23 @@ More consequentially, "will X happen by date D" is a **hazard problem, not a sta
 Each class must define its exposure window, eligible population, censoring, and the treatment of
 elapsed time. Three horizon tiers do not remove the need for event-family models: a court ruling, a
 data release and an election are not the same statistical problem because they resolve in ten days.
+
+**And the exposure denominator has to be stored, which it was not.** The hazard is
+`(k + α)/(exposure + α + β)`, so a forecast made this way cannot be rebuilt from the record without
+the exposure it divided by. That number lived only in the Python dataclass: a reconstruction would
+have found `n`, `k`, `α`, `β` and nothing else, and produced the **static rate** — the estimator
+this section exists to reject — while appearing to succeed. On the fixture the two differ by 264bp.
+`exposure_units` and a name for the unit are now columns, returned by `ledger.reconstruct()`, and
+`tests/test_refclass.py` rebuilds a hazard forecast from stored inputs alone and checks it to the
+basis point.
+
+`spine/refclass.py` is the writer these tables never had. Four things it refuses: **counts supplied
+by the caller** (`k` and `n` are derived from the roster, because two sources of the same number
+eventually disagree); **members that postdate the freeze** (a class frozen before the cases it
+contains is a class selected on outcomes); **an unnamed exposure unit** (forty case-weeks and forty
+case-years are the same `n` and a tenfold difference in rate); and **a selection rule referenced by
+name** — the rule is content-addressed through a manifest, because §9.2's objection to committing to
+labels applies here exactly as it does to model versions.
 
 ### 5.4 Conditional probability, corrected
 

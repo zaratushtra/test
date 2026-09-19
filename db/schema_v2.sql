@@ -33,7 +33,7 @@ PRAGMA busy_timeout = 5000;
 -- which is how a query silently returns nothing and the absence gets read as
 -- evidence. Bump this whenever this file changes in a way that is not purely
 -- additive; ledger.SCHEMA_VERSION must match.
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;
 
 -- ============================================================================
 -- CANONICAL TIMESTAMPS
@@ -232,6 +232,17 @@ CREATE TABLE reference_class_versions (
     beta               REAL NOT NULL CHECK (beta > 0),
     prior_justification TEXT NOT NULL,
     -- Exposure semantics: "X happens by D" needs a denominator, not just events.
+    --
+    -- exposure_units is THE DENOMINATOR the hazard divides by -- events per
+    -- country-year, per case-week, whatever the family's natural unit is. It
+    -- lived only in the Python dataclass and was never stored, which meant a
+    -- deadline-aware forecast could not be reconstructed from the record: the
+    -- number that produced it was not in it. Reconstruction would silently fall
+    -- back to the static rate, the exact estimator section 5.3 rejected.
+    exposure_units     REAL NOT NULL CHECK (exposure_units > 0.0),
+    exposure_unit_name TEXT NOT NULL,   -- what one unit IS; no default, because
+                                        -- guessing it is how 40 case-weeks becomes
+                                        -- 40 case-years a year later
     exposure_window_days INTEGER,
     censoring_note     TEXT,
     frozen_at              TEXT NOT NULL CHECK (frozen_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),

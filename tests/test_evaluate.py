@@ -17,7 +17,8 @@ from datetime import datetime, timedelta, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from spine import evaluate, ledger, models, registry, timeutil  # noqa: E402
+from spine import (evaluate, ledger, models, refclass,  # noqa: E402
+                   registry, timeutil)
 from spine.evaluate import EvaluationError  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 
@@ -66,14 +67,21 @@ def build(con, n_regimes=12, per=10, seed=5):
         "rules_text": "Resolves on the recorded vote.",
         "outcome_token_id": "tok-e"}], jurisdiction="GB", now=at())
     cid = con.execute("SELECT id FROM contracts").fetchone()[0]
-    rcid = con.execute(
-        """INSERT INTO reference_class_versions
-           (class_name, version, description, n, k, alpha, beta,
-            prior_justification, exposure_window_days, censoring_note,
-            frozen_at, selection_rule_ref)
-           VALUES ('committee_adoption',1,'d',40,6,1.0,9.0,'p',7,'c',?,'r')""",
-        (at(days=-1),)).lastrowid
-    con.commit()
+    # Built through the real writer, so the fixture exercises the same path the
+    # project would use rather than a hand-rolled row that cannot drift with it.
+    rule = refclass.declare_selection_rule(
+        con, {"family": "committee_adoption", "include": "reported measures"},
+        created_at=at(days=-2))
+    rcid = refclass.freeze(
+        con, class_name="committee_adoption", version=1,
+        description="measures reported out of committee",
+        members=[refclass.Member(f"c{i}", at(days=-300 + i), 1 if i < 6 else 0)
+                 for i in range(40)],
+        selection_rule_ref=rule, alpha=1.0, beta=9.0,
+        prior_justification="family base rate near 0.10",
+        exposure_units=40.0, exposure_unit_name="case-week",
+        exposure_window_days=7, censoring_note="right-censored at deadline",
+        frozen_at=at(days=-1))
 
     made = []
     for g in range(n_regimes):

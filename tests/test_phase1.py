@@ -65,9 +65,9 @@ def seeded():
     con.execute(
         """INSERT INTO reference_class_versions
            (class_name,version,description,n,k,alpha,beta,prior_justification,
-            frozen_at,selection_rule_ref)
-           VALUES('fed_holds',1,'d',40,4,1.0,9.0,'family base rate ~0.10',?,
-                  'rules/fed_holds_v1.md')""",
+            exposure_units,exposure_unit_name,frozen_at,selection_rule_ref)
+           VALUES('fed_holds',1,'d',40,4,1.0,9.0,'family base rate ~0.10',
+                  40.0,'meeting',?,'rules/fed_holds_v1.md')""",
         (T,),
     )
     con.execute(

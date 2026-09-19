@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
 from spine import (ablation, chain, decision, evaluate, evidence,  # noqa: E402
-                   ledger, models, registry, scoring, shadow)
+                   ledger, models, refclass, registry, scoring, shadow)
 from spine.ablation import Variant  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 from spine.registry import RegistryError  # noqa: E402
@@ -277,16 +277,25 @@ def main() -> int:
 
     # ---------------------------------------------------- the record
     print("\n[5] Twelve regimes of forecasts through the real ledger\n")
-    rcid = con.execute(
-        """INSERT INTO reference_class_versions
-           (class_name, version, description, n, k, alpha, beta, prior_justification,
-            exposure_window_days, censoring_note, frozen_at, selection_rule_ref)
-           VALUES ('committee_adoption',1,'adoptions per committee-week',
-                   40,6,1.0,9.0,'family base rate, Beta(1,9)',7,
-                   'right-censored at deadline',?, 'rules/committee_v1')""",
-        (iso(NOW - timedelta(days=1)),),
-    ).lastrowid
-    con.commit()
+    rule_ref = refclass.declare_selection_rule(
+        con, {"family": "committee_adoption",
+              "include": "every measure reported out of the standing committee"},
+        created_at=iso(NOW - timedelta(days=2)))
+    rcid = refclass.freeze(
+        con, class_name="committee_adoption", version=1,
+        description="adoptions per committee-week",
+        members=[refclass.Member(f"case{i}", iso(NOW - timedelta(days=300 - i)),
+                                 1 if i < 6 else 0) for i in range(40)],
+        selection_rule_ref=rule_ref, alpha=1.0, beta=9.0,
+        prior_justification="family base rate near 0.10; Beta(1,9) has mean 0.10",
+        exposure_units=40.0, exposure_unit_name="case-week",
+        exposure_window_days=7, censoring_note="right-censored at deadline",
+        frozen_at=iso(NOW - timedelta(days=1)))
+    ok("the reference class derives its counts from its roster",
+       (lambda a: a["ok"] and a["n"] == 40 and a["k"] == 6)(
+           refclass.audit(con, rcid)), refclass.audit(con, rcid))
+    ok("...and loads back as the model consumes it",
+       refclass.load(con, rcid).exposure_units == 40.0)
 
     rc = ReferenceClass("committee_adoption", 1, k=6, n=40,
                         exposure_units=40.0, alpha=1.0, beta=9.0)

@@ -15,6 +15,7 @@ prediction markets.
 | 2 · Narrow forecasting | **passed on fixtures** | 67/67 + 43/43 + 54/54 end-to-end. Scoring, decision, models, ablations and the contract registry are built and joined; only *live* market data is blocked on network access. See `docs/PHASE2-REPORT.md` |
 | — · Evidence pipeline | **built, fixtures only** | 68/68 `tests/test_evidence.py` — ingestion, deduplication, effective sources, claims, contradictions, influence budget. See `docs/EVIDENCE-REPORT.md` |
 | — · Shadow execution | **built, fixtures only** | 48/48 `tests/test_shadow.py` — recorded books, queue position, cancellation latency, adverse selection. See `docs/SHADOW-EXECUTION-REPORT.md` |
+| — · Reference classes | **built** | 35/35 `tests/test_refclass.py` — frozen rosters, content-addressed selection rules, hazard forecasts that reconstruct |
 | — · Evaluation loop | **built, fixtures only** | 87/87 `tests/test_evaluate.py` — scores, exclusions, settlement divergence, the dependence DAG. See `docs/EVALUATION-REPORT.md` |
 | — · Signal collection | **built, fixtures only** | 42/42 `tests/test_collect.py` — predeclared anchored queries, RSS/Atom, hostile-input guards, provenance |
 | 4 · Container | **built** | 38/38 `tests/test_serve.py` — scheduled collector, clean SIGTERM, restart safety, no secret mechanism. `Dockerfile`, `serve.py` |
@@ -44,6 +45,7 @@ phase1/sequential_peeking.py  what unbudgeted peeking costs, and the fix
 spine/registry.py         screened markets -> contracts; rules-version identity
 spine/evidence.py         signals -> claims -> contract effects; the influence budget
 spine/shadow.py           recorded books, queue fills, markouts, adverse selection
+spine/refclass.py         freeze a reference class from its roster; load it back
 spine/timeutil.py         one canonical timestamp; point-in-time comparison depends on it
 spine/evaluate.py         resolutions -> scores -> verdict; settlement divergence
 spine/collect.py          query-driven RSS/Atom collection, anchored to propositions
@@ -56,6 +58,7 @@ tests/test_phase2.py      Phase 2 validation — scoring, decision
 tests/test_phase2b.py     Phase 2 validation — models, ablations
 tests/test_evidence.py    evidence pipeline validation
 tests/test_shadow.py      shadow execution validation
+tests/test_refclass.py    freezing, immutability, hazard reconstruction
 tests/test_timeutil.py    timestamp canonicalisation and the ordering bug
 tests/test_docs.py        the documents' claims, checked against the code
 tests/test_serve.py       signals, failure handling, restart safety
@@ -72,7 +75,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 12 suites, 646 checks
+python3 run_tests.py              # 13 suites, 688 checks
 python3 run_tests.py --docs       # and check what the documents claim
 ```
 

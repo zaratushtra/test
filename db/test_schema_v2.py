@@ -51,9 +51,9 @@ def seed(con):
     con.execute("INSERT INTO sources(name,kind,created_at) VALUES('Reuters','wire','2026-01-01T00:00:00.000Z')")
     con.execute("""INSERT INTO reference_class_versions
         (class_name,version,description,n,k,alpha,beta,prior_justification,
-         frozen_at,selection_rule_ref)
+         exposure_units,exposure_unit_name,frozen_at,selection_rule_ref)
         VALUES('fed_holds',1,'desc',40,8,1.0,9.0,'family base rate ~0.10',
-               '2026-01-01T00:00:00.000Z','rules/fed_holds_v1.md')""")
+               40.0,'meeting','2026-01-01T00:00:00.000Z','rules/fed_holds_v1.md')""")
     con.execute("""INSERT INTO manifests(manifest_hash,kind,content,created_at)
         VALUES('m1','forecast_inputs','{}','2026-01-01T00:00:00.000Z')""")
     con.execute("""INSERT INTO propositions
@@ -259,6 +259,32 @@ def main() -> int:
           lambda: decision(0, "tradeable", "EV negative after costs"), "accept")
     check("trade permitted, eligibility tradeable",
           lambda: decision(1, "tradeable"), "accept")
+
+    print("\n[4b] A reference class must state its exposure denominator\n")
+    con = fresh()
+    def refclass(**kw):
+        cols = dict(class_name='rc', version=1, description='d', n=10, k=2,
+                    alpha=1.0, beta=9.0, prior_justification='j',
+                    exposure_units=10.0, exposure_unit_name='case',
+                    frozen_at='2026-01-01T00:00:00.000Z',
+                    selection_rule_ref='r')
+        cols.update(kw)
+        keys = [k for k, v in cols.items() if v is not None]
+        con.execute(
+            f"INSERT INTO reference_class_versions({','.join(keys)}) "
+            f"VALUES({','.join('?' * len(keys))})", [cols[k] for k in keys])
+        con.commit()
+
+    check("reference class with an exposure denominator",
+          lambda: refclass(), "accept")
+    check("reference class with no exposure denominator at all",
+          lambda: refclass(version=2, exposure_units=None), "reject")
+    check("reference class with zero exposure",
+          lambda: refclass(version=3, exposure_units=0.0), "reject")
+    check("reference class with no name for its exposure unit",
+          lambda: refclass(version=4, exposure_unit_name=None), "reject")
+    check("k exceeding n",
+          lambda: refclass(version=5, k=11), "reject")
 
     # ---------------------------------------------------- canonical timestamps
     print("\n[5b] Timestamps that get compared must have one shape\n")
