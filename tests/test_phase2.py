@@ -223,20 +223,42 @@ def main() -> int:
     print(f"        {d.abstain_reason}")
     print(f"        note: {d.notes[0] if d.notes else '-'}")
 
-    ok("close-only eligibility abstains regardless of edge",
+    ok("LIVE mode: close-only abstains regardless of edge",
        not decision.decide(**{**common, "p_lo_bp": 9000, "p_est_bp": 9200,
-                              "p_hi_bp": 9400,
-                              "eligibility_status": "close_only"}).permitted)
-    ok("unknown eligibility abstains",
-       not decision.decide(**{**common, "eligibility_status": "unknown"}).permitted)
+                              "p_hi_bp": 9400, "eligibility_status": "close_only",
+                              "mode": decision.LIVE}).permitted)
+    ok("LIVE mode: unknown eligibility abstains",
+       not decision.decide(**{**common, "eligibility_status": "unknown",
+                              "mode": decision.LIVE}).permitted)
     ok("size over max notional abstains",
        not decision.decide(**{**common, "intended_size_usd": 500.0}).permitted)
     ok("cluster exposure headroom is enforced",
        not decision.decide(**{**common, "cluster_exposure_used_usd": 450.0}).permitted)
     ok("insufficient depth abstains",
        not decision.decide(**{**common, "book": [BookLevel(6100, 10.0)]}).permitted)
+    # Paper mode is the posture under section 2.1: the venue is close-only from
+    # our jurisdiction, so enforcing eligibility would abstain on everything and
+    # the decision layer would measure nothing.
+    paper_co = decision.decide(**{**common, "p_lo_bp": 7500, "p_est_bp": 7800,
+                                  "p_hi_bp": 8100, "eligibility_status": "close_only"})
+    ok("PAPER mode: close-only still evaluates the counterfactual",
+       paper_co.permitted)
+    ok("...and marks itself a simulation", paper_co.is_simulation)
+    ok("...and says so in the notes, so it cannot be mistaken for permission",
+       any("SIMULATED" in n and "confers no permission" in n for n in paper_co.notes),
+       paper_co.notes)
+    ok("paper is the default mode",
+       decision.decide(**common).mode == decision.PAPER)
+    ok("an invalid mode raises",
+       raises(lambda: decision.decide(**{**common, "mode": "yolo"}),
+              decision.DecisionError))
+    ok("non-eligibility abstentions still bind in PAPER mode",
+       not decision.decide(**{**common, "intended_size_usd": 500.0}).permitted)
+    print(f"        paper/close-only: permitted={paper_co.permitted} "
+          f"simulation={paper_co.is_simulation}")
+
     ok("every abstention carries a reason",
-       all(decision.decide(**{**common, k: v}).abstain_reason
+       all(decision.decide(**{**common, k: v, "mode": decision.LIVE}).abstain_reason
            for k, v in [("eligibility_status", "blocked"),
                         ("intended_size_usd", 500.0),
                         ("book", [])]))

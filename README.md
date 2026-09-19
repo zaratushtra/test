@@ -9,13 +9,18 @@ prediction markets.
 
 | Phase | State | Evidence |
 |---|---|---|
-| 0 · Feasibility | **blocked** | Polymarket and FRED unreachable from the build environment; operating jurisdiction undeclared. PolyBench audit complete (failed — see `PHASE0-FINDINGS.md`). |
+| 0 · Feasibility | **partly resolved** | Jurisdiction declared: UK, **paper-only** posture (design §2.1). Market screen still needs network access from a host outside the build sandbox. PolyBench audit complete (failed — see `PHASE0-FINDINGS.md`). |
 | 1 · Ledger & registry | **passed** | 33/33 `tests/test_phase1.py`, 36/36 `db/test_schema_v2.py` — see `docs/PHASE1-REPORT.md` |
-| 2 · Narrow forecasting | **partial** | 61/61 `tests/test_phase2.py` — scoring and decision layers done; registry population and ablations blocked on Phase 0. See `docs/PHASE2-REPORT.md` |
+| 2 · Narrow forecasting | **partial** | 67/67 `tests/test_phase2.py` — scoring and decision layers done; registry population and ablations blocked on Phase 0. See `docs/PHASE2-REPORT.md` |
 | 3–6 | specification | — |
 
-Nothing here demonstrates predictive skill or profitability. Phases 0–1 cover
-feasibility, integrity and plumbing only.
+**Paper only.** Operations are UK-based, where Polymarket is close-only on both
+frontend and API. Live trading is out of scope; the decision layer is a research
+instrument that measures whether an edge *would have* survived execution and
+costs. No account, wallet or KYC is involved at any point.
+
+Nothing here demonstrates predictive skill. Phases 0–2 cover feasibility,
+integrity and plumbing only.
 
 ## Layout
 

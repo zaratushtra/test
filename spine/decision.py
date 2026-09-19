@@ -23,6 +23,16 @@ from dataclasses import dataclass, field
 # Close-only means existing positions can be exited and no new ones opened.
 TRADEABLE = "tradeable"
 
+# Modes. Under the paper-only posture (design section 2.1) the venue is
+# close-only from our jurisdiction, so a live-mode eligibility check would
+# abstain on every market and the decision layer would measure nothing. Paper
+# mode computes the counterfactual instead — what the decision WOULD have been
+# had the trade been permissible — which is what answers P3 as a research
+# question. It records that it did so, so a simulated decision can never be
+# mistaken for a permission to trade.
+PAPER = "paper"
+LIVE = "live"
+
 
 class DecisionError(RuntimeError):
     """The decision could not be formed from the inputs given."""
@@ -45,6 +55,7 @@ class Fill:
 
 @dataclass(frozen=True)
 class Decision:
+    mode: str
     permitted: bool
     abstain_reason: str | None
     side: str | None
@@ -56,6 +67,11 @@ class Decision:
     cluster_exposure_cap_usd: float
     eligibility_status: str
     notes: list[str] = field(default_factory=list)
+
+    @property
+    def is_simulation(self) -> bool:
+        """True when this decision is a counterfactual, not a permission."""
+        return self.mode == PAPER
 
 
 def walk_book(levels: list[BookLevel], target_usd: float) -> Fill:
@@ -137,18 +153,26 @@ def decide(
     cluster_exposure_cap_usd: float,
     min_edge_bp: float = 100.0,
     require_full_fill: bool = True,
+    mode: str = PAPER,
 ) -> Decision:
     """
     Form a trade decision. Abstains by default and explains every refusal.
 
     `min_edge_bp` is a floor on EV after costs — an edge smaller than the noise
     in our own price estimate is not an edge. Default 100bp (1c per share).
+
+    `mode` defaults to PAPER, which evaluates the counterfactual and skips the
+    jurisdictional eligibility gate while recording that it did. LIVE enforces
+    eligibility — and there is deliberately no order-management service for it
+    to feed, so a LIVE decision can be computed but not acted on.
     """
+    if mode not in (PAPER, LIVE):
+        raise DecisionError(f"mode must be {PAPER!r} or {LIVE!r}, got {mode!r}")
     notes: list[str] = []
 
     def abstain(reason: str, **kw) -> Decision:
         return Decision(
-            permitted=False, abstain_reason=reason, side=side,
+            mode=mode, permitted=False, abstain_reason=reason, side=side,
             intended_size_usd=intended_size_usd,
             max_notional_usd=max_notional_usd,
             cluster_exposure_cap_usd=cluster_exposure_cap_usd,
@@ -159,8 +183,15 @@ def decide(
         )
 
     # Eligibility first: no amount of edge makes an impermissible trade permissible.
+    # In paper mode the counterfactual is the whole point, so the gate is noted
+    # rather than enforced — but the note travels with the decision.
     if eligibility_status != TRADEABLE:
-        return abstain(f"not tradeable: eligibility is '{eligibility_status}'")
+        if mode == LIVE:
+            return abstain(f"not tradeable: eligibility is '{eligibility_status}'")
+        notes.append(
+            f"SIMULATED: eligibility is '{eligibility_status}', so this decision is a "
+            "counterfactual and confers no permission to trade"
+        )
 
     if intended_size_usd <= 0:
         return abstain("intended size is zero")
@@ -210,7 +241,7 @@ def decide(
         )
 
     return Decision(
-        permitted=True, abstain_reason=None, side=side,
+        mode=mode, permitted=True, abstain_reason=None, side=side,
         expected_acquisition_bp=fill.expected_price_bp,
         conservative_p_bp=cons, ev_per_share_bp=ev,
         intended_size_usd=fill.filled_usd,

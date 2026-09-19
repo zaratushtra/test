@@ -10,7 +10,11 @@ specification.
 No forecast has been made, nothing has been benchmarked, and no accuracy or profitability advantage
 has been demonstrated.
 
-**Phase status:** 0 blocked on external access and undeclared jurisdiction · **1 PASSED** · **2 PARTIAL** (scoring and decision done and validated; registry population blocked on Phase 0).
+**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PARTIAL** (scoring and
+decision done and validated; registry population blocked on Phase 0).
+
+**Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
+and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
 
 ---
 
@@ -48,24 +52,41 @@ confidence. v2 keeps them apart, because each can fail independently and each ne
 | **P2 — Prediction** | Those claims shift a precisely defined outcome probability, beyond what the price already reflects | The fact is real but priced in, or irrelevant to the resolution rule |
 | **P3 — Opportunity** | That improvement survives uncertainty, execution and costs | Edge is real but smaller than the spread, or capacity is negligible |
 
+P3 is answered under the §2.1 paper-only posture as a **research question** — did the edge survive
+simulated execution against recorded books — not as a trading outcome.
+
 Each has its own evaluation track (§12). A system can pass P1 and P2 and still be worthless.
 
 ---
 
 ## 2. Premise and eligibility
 
-### 2.1 Gate zero — jurisdiction
+### 2.1 Gate zero — jurisdiction: RESOLVED, paper only
 
-**This runs before anything else and can moot the trading premise entirely.** Polymarket operates
-tiered geographic restrictions; some jurisdictions are *close-only on both frontend and API*,
-meaning existing positions can be exited but no new ones opened. The UK is in that tier — no
-Gambling Commission licence. Ireland and the Netherlands were frontend-only as of 19 Sep 2026.
+**Declared 19 Sep 2026: operations are UK-based.** Polymarket lists the UK as close-only on both
+frontend and API — existing positions can be exited, none opened — as it holds no Gambling
+Commission licence.
 
-If the operating jurisdiction is close-only, **P3 is unavailable regardless of P1 and P2**, the
-project is a research system, and Phases 5–6 do not exist. `phase0/screen_markets.py` reports this
-first and refuses to imply a tradeable result without a declared jurisdiction.
+**This does not block the work.** Paper trading reads public market data and simulates fills against
+recorded books. No account, no wallet, no order placement, no KYC. Phases 0–4 are entirely
+unaffected, and shadow execution — the thing that answers P3 — works exactly as designed, because
+simulating a fill needs the book, not permission to trade.
 
-This is a ten-minute check that can save months, and v1 filed it under "unverified facts."
+**What it does change is permanent, not temporary.** Live trading is **out of scope**, and it
+re-enters scope only through a change of circumstance — a licence Polymarket does not currently
+hold, or relocating operations — never by passing a gate in this document. So:
+
+- `order_manager` and the live-risk interlock (halt semantics, expiring health lease, heartbeat
+  auto-cancel, order reconciliation) are **not built**. This removes the most dangerous code in the
+  design, and the review that prompted v2 was right to be most worried about exactly that surface.
+- The decision layer becomes a **research instrument**: it measures whether an edge *would have*
+  survived execution and costs, which is P3 as a scientific question rather than an operational one.
+- Success means "we established whether this works", not "we made money." That is a smaller claim,
+  and it is the one the validation machinery in §3 and §12 was actually built to support.
+
+**Not legal advice.** The factual position above is from Polymarket's published geoblock policy. If
+live trading is ever contemplated, UK gambling and financial regulation around prediction markets
+needs proper advice rather than a line in a design document.
 
 ### 2.2 Scope, stated once
 
@@ -75,11 +96,12 @@ T3 forecast-only. Both cannot govern. v2 resolves it in favour of the addendum:
 
 | Tier | Horizon | Action | What it can validate |
 |---|---|---|---|
-| **T1** | 7–14 days | Trade, if eligible | The short-horizon model only |
-| **T2** | 1–6 months | Trade, if eligible | The mid-horizon model only |
+| **T1** | 7–14 days | Paper only | The short-horizon model only |
+| **T2** | 1–6 months | Paper only | The mid-horizon model only |
 | **T3** | 6 mo – 2 yr | Publish only | Nothing, on any human timescale |
 
-Trading is a **rebuild, not a flag**: the order-management service is absent from the default image.
+Under the §2.1 posture every tier is paper. The order-management service is not built at all, so
+"trading is a rebuild, not a flag" understates it: there is nothing to flag.
 
 **The cost, stated plainly:** these are three models, not one model at three horizons. T1 does not
 use structural pressure vectors — five-year debt trajectories say nothing about a court ruling next
@@ -543,10 +565,11 @@ stretch by up to an order of magnitude. That measurement is itself Phase 1 work.
 | **2 · Narrow forecasting** | One or two event families. Baseline + independent + market-conditioned. Frozen selection rules, explicit abstention. **Shadow execution runs in parallel.** | Forecasts registering and scoring; ablation harness operational; **`regime_id` populated and the regime-level bootstrap is the only scoring path**, so the invalid week-level rule cannot be used by accident |
 | **3 · Prospective evaluation** | Accumulate pre-registered forecasts across **≥12 independent regimes**. Estimate `r_between` from the record and re-derive the stopping rule. | Regime-level bootstrap CI lower bound on BSS > 0 at the re-derived requirement, **≥12 regimes**, *and* calibration reported separately |
 | **4 · Container** | Multi-stage CPU-only build, tini, file secrets, health lease, reconciliation. | Clean SIGTERM cancels open orders; restart reconciles without duplicates |
-| **5 · Live** *(only if eligible)* | Rebuild including order management. Minimum size, hard caps, automatic reversion. | Phase 3 passed **and** shadow execution showed positive net result after realistic costs |
 
-**Phase 0 can end the project. So can Phase 2's shadow execution**, and that is the point of moving
-it forward.
+
+**Phase 0 can end the project. So can shadow execution**, and that is the point of running it
+alongside forecasting from Phase 2 rather than at the end. Under the paper-only posture Phase 5 is
+the terminal phase: it answers P3 and the programme concludes with a finding, not a position.
 
 ---
 
@@ -587,7 +610,8 @@ Confirmed 19 Sep 2026 and time-sensitive; re-check before relying on any of it.
 
 ## 15. What could end this
 
-1. **Eligibility.** Close-only jurisdiction makes P3 unavailable. Knowable in ten minutes.
+1. ~~**Eligibility.**~~ **Resolved** (§2.1): UK, close-only, paper-only posture. This no longer
+   ends the project — it bounds what success means. P3 is answered as a research question.
 2. **Serial dependence — now quantified.** Measured in Phase 1: `r_between` above 0.0032 makes the
    gate unreachable at any duration, and ≥12 independent regimes are required for the test to be
    valid at all. The real value of `r_between` is still unknown and only resolved forecasts can

@@ -56,9 +56,9 @@ critical path to a first scored forecast.
   vector collectively.
 - **Give only what the form requires.** None of the above needs a phone number, address or date of
   birth. If a form asks, that is worth a second look at what the service actually is.
-- **No KYC is involved in any row above.** Reading market data from Polymarket requires no identity
-  verification. That changes only if trading is ever enabled, which is a separate decision with its
-  own jurisdictional gate (§2.1 of the design).
+- **No KYC is involved in any row above, and none will be.** Reading market data from Polymarket
+  requires no identity verification, and under the paper-only posture (§2.1) no account or wallet is
+  ever created. Live trading, which is where KYC would arise, is out of scope.
 
 ### Keys never enter this conversation
 
