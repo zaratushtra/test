@@ -30,6 +30,7 @@ SUITES = [
 
 def main() -> int:
     verbose = "-v" in sys.argv
+    with_docs = "--docs" in sys.argv
     failures, total = [], 0
     for label, path in SUITES:
         p = subprocess.run([sys.executable, os.path.join(ROOT, path)],
@@ -48,6 +49,23 @@ def main() -> int:
     print(f"\n{total - len(failures)}/{total} suites passed")
     for f in failures:
         print(f"  failed: {f}")
+
+    # tests/test_docs.py invokes this script to learn the real counts, so it
+    # cannot be one of the suites above without recursing. It runs after, and
+    # only when asked.
+    if with_docs and not failures:
+        print()
+        d = subprocess.run([sys.executable, os.path.join(ROOT, "tests/test_docs.py")],
+                           capture_output=True, text=True, cwd=ROOT)
+        tail = [ln for ln in d.stdout.splitlines() if "passed" in ln]
+        print(f"{'ok  ' if d.returncode == 0 else 'FAIL'} "
+              f"{'documentation consistency':<42} {tail[-1] if tail else ''}")
+        if d.returncode != 0:
+            print(d.stdout)
+            return 1
+    elif not with_docs:
+        print("  (run with --docs to also check the documentation's claims)")
+
     return 1 if failures else 0
 
 

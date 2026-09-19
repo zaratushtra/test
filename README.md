@@ -54,6 +54,7 @@ tests/test_phase2b.py     Phase 2 validation — models, ablations
 tests/test_evidence.py    evidence pipeline validation
 tests/test_shadow.py      shadow execution validation
 tests/test_timeutil.py    timestamp canonicalisation and the ordering bug
+tests/test_docs.py        the documents' claims, checked against the code
 tests/test_evaluate.py    scoring the record, exclusions, the DAG
 tests/test_collect.py     feed parsing, hostile input, provenance
 tests/test_venue.py       venue parsing and the cycle, offline
@@ -68,7 +69,14 @@ docs/history/             superseded v1 documents
 
 ```bash
 python3 run_tests.py              # all eleven suites, 590 checks
+python3 run_tests.py --docs       # and check what the documents claim
 ```
+
+The second one matters more than it sounds. These documents make specific,
+checkable assertions — suite counts, file layouts, schema versions, measured
+figures that are cited as reasons for design choices — and every one can quietly
+become false. A document that is confidently wrong is worse than one that says
+nothing, because it gets believed.
 
 Individually:
 

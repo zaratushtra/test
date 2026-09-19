@@ -10,6 +10,7 @@ Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
 python3 run_tests.py        # 11 suites, 590 checks — run this first
+python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 
 ## The one thing this project needs from you
