@@ -10,9 +10,12 @@ are real and tested; the rest is specification.
 No forecast has been made, nothing has been benchmarked, and no accuracy or profitability advantage
 has been demonstrated.
 
-**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline** and **§10.2–§10.3 shadow execution** built (`docs/EVIDENCE-REPORT.md`, `docs/SHADOW-EXECUTION-REPORT.md`) — every
-layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
-not code. 628 checks across 12 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
+**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** ·
+**4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
+shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
+end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
+code.** 628 checks across 12 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -676,15 +679,30 @@ stretch by up to an order of magnitude. That measurement is itself Phase 1 work.
 | Phase | Work | Gate |
 |---|---|---|
 | **0 · Feasibility** | Jurisdiction/eligibility (first). Market screen with corrected coefficient. Vintage audit. Throughput pilot. | Eligibility known; enough independent clusters; vintage coverage adequate; throughput consistent with §3.1 |
-| **1 · Ledger & registry** ✅ | Contract registry, evidence ledger, availability-time discipline, schema v2 live, external anchoring. Measure serial dependence. | **PASSED** — 33/33 (`tests/test_phase1.py`), 36/36 (`db/test_schema_v2.py`). See `docs/PHASE1-REPORT.md`. |
-| **2 · Narrow forecasting** | One or two event families. Baseline + independent + market-conditioned. Frozen selection rules, explicit abstention. **Shadow execution runs in parallel.** | Forecasts registering and scoring; ablation harness operational; **`regime_id` populated and the regime-level bootstrap is the only scoring path**, so the invalid week-level rule cannot be used by accident |
-| **3 · Prospective evaluation** | Accumulate pre-registered forecasts across **≥12 independent regimes**. Estimate `r_between` from the record and re-derive the stopping rule. | Regime-level bootstrap CI lower bound on BSS > 0 at the re-derived requirement, **≥12 regimes**, *and* calibration reported separately |
-| **4 · Container** | Multi-stage CPU-only build, tini, file secrets, health lease, reconciliation. | Clean SIGTERM cancels open orders; restart reconciles without duplicates |
+| **1 · Ledger & registry** ✅ | Contract registry, evidence ledger, availability-time discipline, schema v2 live, external anchoring. Measure serial dependence. | **PASSED** — `tests/test_phase1.py`, `db/test_schema_v2.py`. See `docs/PHASE1-REPORT.md`. |
+| **2 · Narrow forecasting** ✅ | One or two event families. Baseline + independent + market-conditioned. Frozen selection rules, explicit abstention. **Shadow execution runs in parallel.** | **PASSED ON FIXTURES** — models, ablations, registry, evidence pipeline and shadow execution all built and joined. The event-family *selection* is a human decision still owed. See `docs/PHASE2-REPORT.md`. |
+| **3 · Prospective evaluation** | Accumulate pre-registered forecasts across **≥12 independent regimes**. Estimate `r_between` from the record and re-derive the stopping rule. | **BLOCKED on live data and calendar time, not code.** The machinery is built and validated (`spine/evaluate.py`): the gate refuses to evaluate without a declared look budget, below twelve regimes, or with scores left stale by a resolution revision |
+| **4 · Container** ✅ | Multi-stage CPU-only build, tini, health lease, restart safety. | **BUILT** — `Dockerfile`, `serve.py`, `tests/test_serve.py`. Clean SIGTERM (measured at 0.2s on a 30s interval); restart re-registers nothing. **"File secrets" and "cancels open orders" are struck**: under §2.1 there are no orders to cancel and no credential to mount, and a secrets facility with no use is a liability the moment one appears |
 
 
 **Phase 0 can end the project. So can shadow execution**, and that is the point of running it
 alongside forecasting from Phase 2 rather than at the end. Under the paper-only posture Phase 5 is
 the terminal phase: it answers P3 and the programme concludes with a finding, not a position.
+
+### What the code is waiting on
+
+Every remaining blocker is data or a decision. In order of how cheaply they resolve:
+
+1. **Run `python3 run_cycle.py --check` from a networked host.** Both venue endpoints are public and
+   need no key; the build sandbox simply has no route to them.
+2. **Declare the evaluation budget** (`evaluate.declare_plan`). The gate refuses to evaluate without
+   it — deliberately, since choosing the number of looks after seeing the data is the failure alpha
+   spending exists to prevent.
+3. **Name the regime rotation** — what actually varies across the twelve regimes. This decides
+   whether the bootstrap means anything at all.
+4. **Choose one or two event families** and freeze their selection rules.
+5. **Set `min_width_bp` per horizon class**, and revisit the influence caps in `spine/evidence.py`.
+   Both are currently declared policy rather than anything measured.
 
 ---
 
