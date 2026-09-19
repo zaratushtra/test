@@ -50,6 +50,10 @@ FIELD_CANDIDATES = {
     "closed": ["closed"],
     "active": ["active"],
     "event_id": ["eventId", "event_id"],
+    # The rules govern settlement, not the title. Without this the screen's
+    # output cannot be registered as a contract at all (spine/registry.py).
+    "rules_text": ["description", "resolutionCriteria", "rules"],
+    "outcome_token_id": ["clobTokenIds", "clob_token_ids", "tokenId"],
 }
 
 STOPWORDS = {
@@ -119,9 +123,12 @@ class Market:
     liquidity: float
     volume: float
     event_id: str | None
+    # Empty means the venue exposed no settlement text. Registration refuses such
+    # a market rather than inventing a rule for it.
+    rules_text: str = ""
+    outcome_token_id: str = ""
     tags: list[str] = field(default_factory=list)
     zone: str = "excluded"
-    firewall_cap: float = 0.60
     cluster_id: str = ""
 
 
@@ -168,20 +175,44 @@ def extract_event_id(raw: dict) -> str | None:
     return None
 
 
-def classify(horizon_days: float | None, liquidity: float) -> tuple[str, float]:
+def extract_token_id(raw: dict) -> str:
     """
-    Zones per SPINE §11 tiering. Horizon thresholds follow the confidence
-    firewall, not convenience: 6 months is Layer 3, not the structural zone.
+    The YES outcome token. Gamma returns `clobTokenIds` as a JSON *string* of a
+    two-element list, ordered [YES, NO]; take the first. A market with no token
+    is not tradeable and the registry will fall back to a synthetic id.
+    """
+    v = pick(raw, "outcome_token_id")
+    if v is None:
+        return ""
+    if isinstance(v, str) and v.strip().startswith("["):
+        try:
+            v = json.loads(v)
+        except json.JSONDecodeError:
+            return v.strip()
+    if isinstance(v, (list, tuple)):
+        return str(v[0]) if v else ""
+    return str(v).strip()
+
+
+def classify(horizon_days: float | None, liquidity: float) -> str:
+    """
+    Zones per SPINE v2 tiering: T1 7-14d, T2 1-6mo, T3 structural.
+
+    This used to return a second value, `firewall_cap` — the per-horizon ceiling
+    on the *probability* that v2 §5.1 removed. Nothing consumed it and the
+    concept no longer exists, so it is gone rather than renamed. The discipline
+    it was reaching for now lives in `min_width_bp` on the forecast, which is a
+    floor on interval width and a separate, still-undeclared decision.
     """
     if horizon_days is None or horizon_days <= 0:
-        return "excluded", 0.60
+        return "excluded"
     if horizon_days <= 14 and liquidity >= 5_000:
-        return "T1", 0.60
+        return "T1"
     if 30 <= horizon_days <= 183 and liquidity >= 5_000:
-        return "T2", 0.70
+        return "T2"
     if horizon_days >= 730 and liquidity >= 10_000:
-        return "T3_structural", 0.85
-    return "excluded", 0.60
+        return "T3_structural"
+    return "excluded"
 
 
 def normalise(raw_markets: list[dict], now: datetime) -> list[Market]:
@@ -193,7 +224,7 @@ def normalise(raw_markets: list[dict], now: datetime) -> list[Market]:
         end_dt = _parse_dt(end_raw)
         horizon = (end_dt - now).total_seconds() / 86400.0 if end_dt else None
         liq = _to_float(pick(raw, "liquidity"))
-        zone, cap = classify(horizon, liq)
+        zone = classify(horizon, liq)
         out.append(
             Market(
                 id=str(pick(raw, "id") or ""),
@@ -203,9 +234,10 @@ def normalise(raw_markets: list[dict], now: datetime) -> list[Market]:
                 liquidity=liq,
                 volume=_to_float(pick(raw, "volume")),
                 event_id=extract_event_id(raw),
+                rules_text=str(pick(raw, "rules_text") or "").strip(),
+                outcome_token_id=extract_token_id(raw),
                 tags=extract_tags(raw),
                 zone=zone,
-                firewall_cap=cap,
             )
         )
     return out

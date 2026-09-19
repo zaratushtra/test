@@ -1,9 +1,12 @@
 # Phase 2 Report — Scoring and Decision Layers
 
 **Date:** 19 Sep 2026
-**Status:** **Partial.** The two layers buildable without market access are complete and validated.
-Contract-registry population and the ablation harness remain blocked on Phase 0.
-**Validation:** `tests/test_phase2.py` — 67/67. `tests/test_phase2b.py` — 43/43. Suites from earlier phases still green (36/36, 33/33).
+**Status:** **Passed on fixtures.** Every layer is built, and for the first time they are joined:
+one dataset now travels from the market screen to a scored, recorded decision in a single process.
+What remains blocked is *live* data, not code.
+**Validation:** `python3 run_tests.py` — 5/5 suites, 236 checks. `tests/test_phase2.py` 67/67,
+`tests/test_phase2b.py` 43/43, `tests/test_e2e.py` 54/54, `db/test_schema_v2.py` 39/39,
+`tests/test_phase1.py` 33/33.
 
 ---
 
@@ -178,15 +181,81 @@ Both were my test assumptions being wrong rather than the code:
 
 ---
 
+## 2d. The contract registry, and what integrating it found
+
+`spine/registry.py` is the join that did not exist: it turns the market screen's output into rows
+the forecast tables can reference. Three §10.1 decisions are structural rather than documented.
+
+- **Rules text is hashed, and an amendment is a new contract row.** Polymarket amends resolution
+  text after listing. Updating the row in place would silently rewrite what every standing forecast
+  was made against; inserting a new row keeps the old text intact and makes the divergence visible.
+  `divergence_check()` reports it and deliberately mutates nothing — auto-disqualifying a forecast
+  because someone appended a clarification is the over-correction §5.1 warns against.
+- **Payout states are recorded, not assumed binary.** A UMA "Unknown" settles at 0.50.
+- **Eligibility carries a check time**, because it is a fact about a jurisdiction on a date.
+
+A market with no deadline or no resolution text is **skipped with a reason** rather than registered
+with a placeholder. A contract whose settlement rule is unknown cannot be forecast against, and
+inventing one is worse than having none.
+
+### Three things the end-to-end run broke
+
+The integration suite exists to fail on seams, and it did. None of these were visible to any
+module's own tests.
+
+**1. The screen's output could not be registered at all.** `phase0/screen_markets.py` dropped the
+`description` field — which is where Polymarket keeps the settlement rules — and never extracted the
+CLOB outcome token. Every market it produced would have been skipped by the registry for "no
+resolution text". Both fields are now carried through `normalise()`, with `clobTokenIds` parsed from
+the JSON-string-of-a-list form Gamma returns and the YES leg taken.
+
+**2. The UK posture was unrecordable.** `trade_decisions` carried
+`CHECK (permitted = 0 OR eligibility_status = 'tradeable')`. Under a close-only jurisdiction *every*
+paper decision would have had to be stored as a refusal, destroying the counterfactual the paper run
+exists to produce. The check was right about live trading and wrong about what it was checking. The
+table now carries a `mode` column and the invariant is stated precisely:
+
+```sql
+CHECK (permitted = 0 OR mode = 'paper' OR eligibility_status = 'tradeable')
+```
+
+`mode` has **no DEFAULT**. A default of `'paper'` would silently relabel an omitted live decision as
+a simulation, which is the direction that hides harm. `spine/decision.record()` is now the only
+writer to the table, so the column cannot be left out by accident.
+
+**3. `Market.firewall_cap` was still shipping the removed firewall.** A per-horizon ceiling on the
+*probability* (0.60 / 0.70 / 0.85), written into every row of `market_screen.csv`, months after
+§5.1 removed the concept. Nothing consumed it. Deleted rather than renamed: the discipline it was
+reaching for lives in `min_width_bp`, which is a floor on interval width and a separate decision
+still to be made.
+
+### What the end-to-end run also showed about power
+
+On 120 forecasts across 12 regimes the independent model beat its own baseline decisively
+(paired ΔBrier +0.19, CI [+0.12, +0.26]) and came out **+0.011 against a market it genuinely beats**
+— reported as *no detectable effect*, CI [−0.0052, +0.0292].
+
+That is not a bug and not a disappointment; it is the Phase 0 power arithmetic arriving in practice.
+A Brier difference that small needs n_eff ≈ 688 to resolve, against the 120 observations in 12
+regimes this record holds. Against a market
+carrying no information the same machinery fires immediately, which is what separates "no effect"
+from "cannot see" — and the suite asserts both, so the distinction cannot quietly collapse.
+
+The operational consequence: **a real market-beating edge will look like nothing for a long time.**
+Any temptation to conclude otherwise early is precisely what the sequential schedule exists to
+budget.
+
+---
+
 ## 3. Gate status
 
 | Phase 2 gate item | State |
 |---|---|
 | `regime_id` populated and regime-level bootstrap the only scoring path | **done** — enforced and tested |
-| Forecasts registering and scoring | **done** — registration in Phase 1, scoring here |
-| One or two event families, frozen selection rules | blocked — needs the contract registry |
+| Forecasts registering and scoring | **done** — 120 forecasts registered, chained, resolved and scored in one run |
+| One or two event families, frozen selection rules | **unblocked** — registry built; the *selection* is a decision still owed (§5) |
 | Baseline + independent + market-conditioned forecasts | **done** — `spine/models.py`, deadline-aware, validated |
-| Ablation harness | **done** — `spine/ablation.py`, paired, regime-gated |
+| Ablation harness | **done** — `spine/ablation.py`, paired, regime-gated, exercised end to end |
 | Explicit abstention | **done** — every refusal carries a reason |
 | Shadow execution in parallel | partial — book walking and fills exist; needs recorded books |
 | Sequential testing procedure (§12) | **done** — `spine/sequential.py`, measured and validated |
@@ -207,10 +276,16 @@ Both were my test assumptions being wrong rather than the code:
 
 ## 5. Next
 
-Phase 2 cannot complete without Phase 0. The blocking items, in order of how cheaply they resolve:
+The code path is complete end to end. What is left is data and three declarations.
 
-1. **Declare the operating jurisdiction.** Ten minutes. Determines whether the decision layer is
-   ever used in anger or remains a research instrument.
-2. **Reach the Gamma API** from a host that is not this sandbox, and run `phase0/screen_markets.py`.
-   That populates the contract registry and unblocks event-family selection.
-3. **Record order books** alongside the first forecasts so shadow execution has something to walk.
+1. **Reach the Gamma API** from a host that is not this sandbox, and run
+   `phase0/screen_markets.py --jurisdiction GB --input-json` … then `registry.ingest_markets`.
+   The screen now carries everything the registry needs, so this is one run, not a porting job.
+2. **Record order books** alongside the first forecasts so shadow execution has something to walk.
+3. **Three declarations that must be made before the record starts accumulating**, because making
+   them afterwards reintroduces exactly the freedom the design removes:
+   - the number of looks in the sequential schedule (§12);
+   - the regime rotation plan — what actually varies across the twelve regimes (§3.2);
+   - which one or two event families to start with, and their frozen selection rules.
+4. **`min_width_bp` per horizon class** — currently supplied per forecast by the caller with no
+   declared policy behind it. The firewall's old caps are gone and nothing replaced them.

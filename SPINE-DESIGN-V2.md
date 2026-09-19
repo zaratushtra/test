@@ -10,8 +10,9 @@ are real and tested; the rest is specification.
 No forecast has been made, nothing has been benchmarked, and no accuracy or profitability advantage
 has been demonstrated.
 
-**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PARTIAL** (scoring and
-decision done and validated; registry population blocked on Phase 0).
+**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** — every
+layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
+not code. 236 checks across 5 suites (`python3 run_tests.py`).
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -460,6 +461,19 @@ material mismatch blocks new exposure until reviewed** — enforced, not merely 
 from the binary research outcome, so a position cannot vanish from economic evaluation because its
 outcome was excluded from Brier scoring.
 
+**A rules amendment is a new contract, not an edit.** Polymarket amends resolution text after
+listing. `spine/registry.py` makes the rules-text hash part of the contract's identity, so an
+amendment inserts a new row and every standing forecast keeps pointing at the text it was made
+against. `divergence_check()` reports the difference and mutates nothing: auto-disqualifying a
+forecast because someone appended a clarification is the over-correction §5.1 warns about.
+
+**A market with no deadline or no rules text is refused registration, with a reason recorded.** A
+contract whose settlement rule is unknown cannot be forecast against, and a placeholder rule is
+worse than no contract.
+
+**Eligibility is stamped with a check time.** It is a fact about a jurisdiction on a date, not a
+permanent property of a market.
+
 ### 10.2 Evaluate the price you could actually get
 
 A midpoint is not an executable price.
@@ -480,6 +494,20 @@ categories differ and a blanket assumption is wrong.
 For passive orders, "the market touched my limit" is not a fill: model queue position, partial
 fills, cancellation latency, and the fact that fills arrive disproportionately when the price is
 moving against you.
+
+**Paper and live are different kinds of record.** `trade_decisions.mode` is `NOT NULL` with no
+default, and the eligibility invariant is stated on live permissions alone:
+
+```sql
+CHECK (permitted = 0 OR mode = 'paper' OR eligibility_status = 'tradeable')
+```
+
+The earlier form — `permitted = 0 OR eligibility_status = 'tradeable'` — was right about live
+trading and wrong about what it was checking. Under §2.1's close-only posture it made *every* paper
+decision storable only as a refusal, destroying the counterfactual the paper run exists to produce.
+A default of `'paper'` was rejected for the opposite reason: it would silently relabel an omitted
+live decision as a simulation. `spine/decision.record()` is the only writer to the table, so the
+column cannot be omitted in practice.
 
 ### 10.3 Shadow execution starts on day one
 

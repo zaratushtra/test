@@ -10,8 +10,8 @@ prediction markets.
 | Phase | State | Evidence |
 |---|---|---|
 | 0 · Feasibility | **partly resolved** | Jurisdiction declared: UK, **paper-only** posture (design §2.1). Market screen still needs network access from a host outside the build sandbox. PolyBench audit complete (failed — see `PHASE0-FINDINGS.md`). |
-| 1 · Ledger & registry | **passed** | 33/33 `tests/test_phase1.py`, 36/36 `db/test_schema_v2.py` — see `docs/PHASE1-REPORT.md` |
-| 2 · Narrow forecasting | **partial** | 67/67 + 43/43 — scoring, decision, models and ablations all done; only registry population is blocked on network access. See `docs/PHASE2-REPORT.md` |
+| 1 · Ledger & registry | **passed** | 33/33 `tests/test_phase1.py`, 39/39 `db/test_schema_v2.py` — see `docs/PHASE1-REPORT.md` |
+| 2 · Narrow forecasting | **passed on fixtures** | 67/67 + 43/43 + 54/54 end-to-end. Scoring, decision, models, ablations and the contract registry are built and joined; only *live* market data is blocked on network access. See `docs/PHASE2-REPORT.md` |
 | 3–6 | specification | — |
 
 **Paper only.** Operations are UK-based, where Polymarket is close-only on both
@@ -33,9 +33,12 @@ spine/                    canonicalisation, hash chain, evidence ledger
 phase0/                   market screen, vintage audit, throughput pilot
 phase1/serial_dependence.py   the analysis that invalidated the original gate
 phase1/sequential_peeking.py  what unbudgeted peeking costs, and the fix
+spine/registry.py         screened markets -> contracts; rules-version identity
 tests/test_phase1.py      Phase 1 validation
 tests/test_phase2.py      Phase 2 validation — scoring, decision
 tests/test_phase2b.py     Phase 2 validation — models, ablations
+tests/test_e2e.py         end-to-end: screen -> registry -> ledger -> score -> decide
+run_tests.py              runs every suite
 docs/                     phase reports, the external review, and its disposition
 docs/DATA-SOURCES.md      free/OSS sources and what each actually requires
 docs/history/             superseded v1 documents
@@ -44,13 +47,24 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
+python3 run_tests.py              # all five suites, 236 checks
+```
+
+Individually:
+
+```bash
 python3 db/test_schema_v2.py      # schema guarantees
 python3 tests/test_phase1.py      # ledger, chain, availability discipline
 python3 tests/test_phase2.py      # scoring, decision, abstention
 python3 tests/test_phase2b.py     # models, hazard, ablations
+python3 tests/test_e2e.py         # the whole pipeline on one dataset
 python3 phase1/serial_dependence.py    # power and serial dependence analysis
 python3 phase1/sequential_peeking.py   # cost of peeking; alpha-spending check
 ```
+
+The end-to-end suite is the one that matters most and the one that was missing
+longest. Everything else validates a module against fixtures shaped for that
+module, which is how two components can both pass and still not join.
 
 Stdlib only; no installs. Requires Python 3.10+ and SQLite 3.37+ (STRICT tables).
 

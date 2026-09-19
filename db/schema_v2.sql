@@ -406,13 +406,25 @@ CREATE TABLE trade_decisions (
     ev_per_share_bp        REAL,
     permitted              INTEGER NOT NULL CHECK (permitted IN (0,1)),
     abstain_reason         TEXT,
+    -- Paper and live are different KINDS of record, not a flag on one kind. A
+    -- paper decision is a counterfactual: it confers no permission and there is
+    -- no order-management service for it to reach. Without this column the
+    -- eligibility check below makes the entire UK close-only posture
+    -- unrecordable -- every simulated decision would have to be stored as a
+    -- refusal, destroying the counterfactual the paper run exists to produce.
+    -- No DEFAULT: a decision that does not say whether it was real is not
+    -- recordable. Defaulting to 'paper' would silently relabel an omitted
+    -- live decision as a simulation, which is the direction that hides harm.
+    mode                   TEXT NOT NULL CHECK (mode IN ('paper','live')),
     max_notional_usd       REAL NOT NULL CHECK (max_notional_usd >= 0),
     cluster_exposure_cap_usd REAL NOT NULL CHECK (cluster_exposure_cap_usd >= 0),
     eligibility_status     TEXT NOT NULL CHECK (eligibility_status IN
                              ('tradeable','close_only','blocked','unknown')),
     book_snapshot_ref      TEXT,
     CHECK (permitted = 1 OR abstain_reason IS NOT NULL),
-    CHECK (permitted = 0 OR eligibility_status = 'tradeable')
+    -- The invariant that matters, stated precisely: a LIVE permission requires
+    -- a tradeable contract. Paper mode is exempt because it is not a permission.
+    CHECK (permitted = 0 OR mode = 'paper' OR eligibility_status = 'tradeable')
 ) STRICT;
 
 -- ============================================================================

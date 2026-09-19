@@ -249,3 +249,46 @@ def decide(
         cluster_exposure_cap_usd=cluster_exposure_cap_usd,
         eligibility_status=eligibility_status, notes=notes,
     )
+
+
+def record(
+    con,
+    *,
+    forecast_id: int,
+    contract_id: int,
+    decided_at: str,
+    d: Decision,
+    costs_bp: float,
+    book_snapshot_ref: str | None = None,
+) -> int:
+    """
+    Persist a decision. The only writer to `trade_decisions`.
+
+    It exists so that `mode` cannot be omitted. The schema column carries no
+    default precisely because the omission would be silent and would relabel a
+    live decision as a simulation; routing every write through one function is
+    what makes that guarantee hold in practice rather than in principle.
+
+    Notes are stored on the abstain reason for a refusal and discarded for a
+    permission, because the note that matters on a permitted paper decision --
+    that it is a counterfactual -- is already implied by `mode`.
+    """
+    reason = d.abstain_reason
+    if reason is None and not d.permitted:
+        raise DecisionError("a refusal must carry a reason")
+    cur = con.execute(
+        """INSERT INTO trade_decisions
+           (forecast_id, contract_id, decided_at, expected_acquisition_bp,
+            intended_size_usd, costs_bp, ev_per_share_bp, permitted,
+            abstain_reason, mode, max_notional_usd, cluster_exposure_cap_usd,
+            eligibility_status, book_snapshot_ref)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (forecast_id, contract_id, decided_at,
+         round(d.expected_acquisition_bp) if d.expected_acquisition_bp is not None else None,
+         d.intended_size_usd, round(costs_bp), d.ev_per_share_bp,
+         1 if d.permitted else 0, reason, d.mode,
+         d.max_notional_usd, d.cluster_exposure_cap_usd,
+         d.eligibility_status, book_snapshot_ref),
+    )
+    con.commit()
+    return cur.lastrowid

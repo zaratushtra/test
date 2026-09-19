@@ -230,17 +230,28 @@ def main() -> int:
     con = fresh(); seed(con)
     insert_forecast(con, "f1", GENESIS, 3000, 2500, 3600)
 
-    def decision(permitted, elig, abstain=None):
+    def decision(permitted, elig, abstain=None, mode="live"):
         con.execute("""INSERT INTO trade_decisions
-            (forecast_id,contract_id,decided_at,permitted,abstain_reason,
+            (forecast_id,contract_id,decided_at,permitted,abstain_reason,mode,
              max_notional_usd,cluster_exposure_cap_usd,eligibility_status)
-            VALUES(1,1,'t',?,?,100.0,500.0,?)""", (permitted, abstain, elig))
+            VALUES(1,1,'t',?,?,?,100.0,500.0,?)""",
+            (permitted, abstain, mode, elig))
         con.commit()
 
-    check("trade permitted while eligibility is close_only",
+    check("LIVE trade permitted while eligibility is close_only",
           lambda: decision(1, "close_only"), "reject")
-    check("trade permitted while eligibility unknown",
+    check("LIVE trade permitted while eligibility unknown",
           lambda: decision(1, "unknown"), "reject")
+    # The eligibility gate exists to stop a live permission on an ineligible
+    # contract. A paper decision is not a permission, and under a close-only
+    # jurisdiction it is the only kind there is -- so refusing it would make the
+    # entire operating posture unrecordable rather than making it safer.
+    check("PAPER decision permitted while eligibility is close_only",
+          lambda: decision(1, "close_only", mode="paper"), "accept")
+    check("PAPER mode does not excuse an unlabelled refusal",
+          lambda: decision(0, "close_only", mode="paper"), "reject")
+    check("an unknown mode",
+          lambda: decision(1, "tradeable", mode="shadow"), "reject")
     check("abstain with no reason given",
           lambda: decision(0, "tradeable"), "reject")
     check("abstain with a reason",
