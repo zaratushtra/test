@@ -1,9 +1,20 @@
 # SPINE §11 — Tiered Horizons and the Signal Architecture
 
-**Status:** Addendum to SPINE-DESIGN-FINAL. Design only; no code written, nothing benchmarked.
-All third-party projects in §11.10 are described from public documentation found via search —
-existence and stated purpose only. **No license, maintenance status, or API behaviour has been
-verified.** Treat the whole table as Phase 0 audit input.
+**Status:** Addendum to SPINE-DESIGN-FINAL. Design only, except where Phase 0 has since produced
+evidence — those places are marked.
+
+**Revised 2026-09-19 after Phase 0.** Two corrections, both of which reverse earlier claims in this
+document:
+
+- **§11.0.1 (new)** — `n_eff` is non-monotonic in weekly basket size. The "15 markets/week" figure
+  was assumed, not derived, and on a realistic cluster structure it is actively harmful.
+- **§11.10** — the PolyBench recommendation is **retracted**. It was made from search snippets;
+  reading the repository disproves it.
+
+Every other third-party project in §11.10 is still described from public documentation only —
+existence and stated purpose, with **no license, maintenance status, or API behaviour verified**.
+`py_clob_client` is the single exception: its name was confirmed in Phase 0(d). Treat the rest of
+the table as Phase 0 audit input.
 
 ---
 
@@ -44,7 +55,43 @@ r̄ = 0.60  →  1.7 n_eff/week   →  ~3 years
 > election are one observation. Fifteen markets spanning a court ruling, a central bank decision, a
 > sports outcome, a crypto threshold, a legislative vote and a weather event are close to fifteen.
 
-### 11.0.1 The honest cost of tiering
+### 11.0.1 Correction — `n_eff` is non-monotonic in basket size
+
+*Added after Phase 0(a). The "15 markets/week" figure above was assumed, not derived, and on a
+realistic cluster structure it is actively harmful.*
+
+`r̄` is not a property of the venue that you discover and then live with. It is a property of the
+basket **you choose**, and it rises as soon as you take more than one market per correlation
+cluster. Past `k` = the number of independent clusters available, `r̄` grows faster than `k` does,
+so evidence per week **falls** while workload climbs.
+
+Measured by `phase0/screen_markets.py` on a 20-market / 8-cluster fixture:
+
+| weekly basket | r̄ | n_eff/week | weeks to n_eff = 247 |
+|---|---|---|---|
+| 5 | 0.050 | 4.17 | 59 |
+| **8** | **0.050** | **5.93** | **42** ← optimum |
+| 10 | 0.083 | 5.71 | 43 |
+| 15 | 0.207 | 3.85 | 64 |
+| 20 | 0.315 | 2.87 | 86 |
+
+Twenty markets a week is **2.5× the work of eight for half the evidence**, and doubles the time to a
+verdict. Three consequences:
+
+1. **The weekly basket size is not a free parameter.** It should equal the number of independent
+   clusters the screen finds, and no more. Taking a round number like 15 because it sounds
+   productive is a way to spend months buying correlated duplicates.
+2. **Volume within a domain is worthless.** The lever that shortens Register A is *cluster count* —
+   more regions, more mechanisms, more question types. Trading more markets about the same handful
+   of theses does not accumulate evidence, it just accumulates work.
+3. **`r̄ ≤ 0.1` is achievable by construction**, not by luck: take one market per cluster and the
+   observed `r̄` stays at the cross-cluster floor. The binding question is therefore not "how
+   correlated is Polymarket" but "how many distinct clusters does it offer per week."
+
+`screen_markets.py` sweeps basket size and reports the optimum, because the naive "more is better"
+intuition is wrong here in a way that costs months.
+
+### 11.0.2 The honest cost of tiering
 
 Three tiers means **three models, not one model at three horizons.**
 
@@ -393,7 +440,7 @@ are **unverified**. This table is Phase 0 audit input, not a dependency list.
 | Project | Role | Why |
 |---|---|---|
 | **Feast** | Point-in-time feature store | Point-in-time joins are its core primitive — it implements §11.7 rules 3–5 directly. Do not hand-roll vintage correctness. |
-| **`py-clob-client`** (official; a v2 line is referenced) | Polymarket CLOB access | Polymarket maintains official TS/Python/Rust clients. The Gamma API and parts of CLOB need no auth for read-only market data. |
+| **`py_clob_client`** (official; a v2 line is referenced) | Polymarket CLOB access | **Name verified** in Phase 0(d) — it is the client PolyBench depends on. Polymarket maintains official TS/Python/Rust clients; the Gamma API and parts of CLOB need no auth for read-only market data. Version and license still unverified. |
 | **`datasketch`** / **`text-dedup`** | MinHash + LSH near-dup | Standard, well-understood, cheap. `text-dedup` packages MinHash/SimHash/suffix-array pipelines together. |
 | **`sentence-transformers`** + **HDBSCAN** (BERTopic pattern) | Event clustering | Documented practice for news story discovery: strong encoder → UMAP → HDBSCAN. Needs the streaming and time-boxing adaptations in §11.4.2. |
 | **FAISS** or **hnswlib** / **Qdrant** | ANN index | Required for near-dup lookup at any real ingestion rate. |
@@ -406,7 +453,6 @@ are **unverified**. This table is Phase 0 audit input, not a dependency list.
 
 | Project | Role | Why |
 |---|---|---|
-| **PolyBench** (`github.com/PolyBench/PolyBench`) | Backtest corpus | **The highest-value find here.** Point-in-time cross-sections of ~38,700 binary Polymarket markets over ~5,000 events, each snapshot coupled to CLOB state *and* a temporally aligned news stream. That is close to a purpose-built T1/T2 evaluation corpus, and its contamination controls partly answer the §2.5 objection that historical replay is hindsight — for the *automated* parts of the pipeline. It cannot validate the human-judgment stages. |
 | **ForecastBench** | External calibration baseline | Dynamic benchmark, questions gathered daily from nine sources, LLM *and* human forecaster predictions, public leaderboard. Use as the comparator that tells you whether your BSS is impressive or ordinary. |
 | **GDELT** | Narrative volume, source diversity | Free, global, ~15-minute cadence, with source URLs and mention counts. **Use it for volume and diversity measurement, not as ground-truth events** — see the caution below. |
 | **ACLED** / **UCDP** | Curated conflict events | High precision, human-curated. The appropriate ground truth where they have coverage; GDELT is not. |
@@ -424,6 +470,7 @@ are **unverified**. This table is Phase 0 audit input, not a dependency list.
 
 | Project | Why not |
 |---|---|
+| **PolyBench** | **Retracted — an earlier revision of this document called it "the highest-value find here" and recommended it as a backtest corpus, on the strength of search snippets. Reading the repository (Phase 0(d)) contradicts that on four counts.** (1) *It contains no probabilities.* `Prediction` stores `decision` (BUY/SELL/HOLD/SKIP), `side` and `confidence`; the string `probability` appears zero times in the schema. Brier and BSS cannot be computed from a trading action plus a conviction score without inventing the mapping. (2) *"Contamination-proof" means LLM knowledge-cutoff*, not point-in-time correctness — the two were conflated. (3) *There is no price history.* `Market` is a current-state row with `last_updated DEFAULT CURRENT_TIMESTAMP`, overwritten in place; point-in-time state exists only as JSON blobs inside `Prediction` rows, so you can ask what a given model saw but never what the book was at time T. (4) *News provenance is erased* — `core/news_fetcher.py` queries Google News RSS per market and scrapes the results, an algorithmically ranked aggregate with no publisher independence metadata, which makes `n_eff_sources` (§11.4) uncomputable from it. Its evaluation also filters to `confidence ≥ 0.6` and EV-positive predictions, which is right for measuring returns and fatal for measuring calibration. **No LICENSE file** (404) — all rights reserved; the dataset is not in the repo but behind a personal OneDrive share. *Residual value:* read `core/market_data.py` for Gamma/CLOB API patterns, and its CLOB-snapshot-to-news alignment as prior art. Treat the published results as trading-agent evaluation, not forecasting calibration. |
 | **Polymarket/agents** | An autonomous-trading demo framework. Useful to read for API patterns, but its risk posture is the opposite of §6 — this design requires trading to be a rebuild, not a flag. |
 | **GDELT CAMEO event codes as direct features** | Machine-coded from news with well-documented false positives and duplicate coding of single events. Feeding them in raw injects exactly the duplication problem §11.4 exists to solve. A 2026 comparative analysis of GDELT vs POLECAT against ACLED as a white-box benchmark is the relevant prior reading. |
 | Generic "news sentiment API" products | Sentiment is a weak, heavily-processed proxy that discards provenance — the one thing this architecture depends on. |
@@ -434,10 +481,10 @@ are **unverified**. This table is Phase 0 audit input, not a dependency list.
 
 | Phase | Change |
 |---|---|
-| **0** | Add two audits: (a) **market-independence survey** — can the T1 universe supply ~15 weekly markets with `r̄ ≤ 0.1`? This now determines the Phase 3 timeline more than anything else. (b) **PolyBench replication** — pull it, confirm the point-in-time claims hold, decide whether it serves as the backtest corpus. |
+| **0** | Add two audits. **(a) Market-independence survey** — *how many independent clusters* does the T1 universe offer per week? Per §11.0.1 this, not market count, sets the Phase 3 timeline; the screen sweeps basket size and reports the optimum. **(b) PolyBench replication** — ~~pull it and decide whether it serves as the backtest corpus~~ **DONE, failed.** See the retraction in §11.10. No replacement corpus identified; Register A therefore rests entirely on forward-looking pre-registered forecasts, as §2.5 always required. |
 | **1** | Signal pipeline S0–S6 built alongside the forecast stages. Feast integration is Phase 1 work, not a later optimisation — retrofitting point-in-time correctness is far harder than starting with it. |
 | **2** | Add `λ_sig` calibration on the same three-split protocol as `λ`. Two free parameters now, two freeze points. |
-| **3** | Revised to **10–18 months** at `r̄ ≤ 0.1` and 15 markets/week, replacing 18–48. This estimate is entirely dependent on the Phase 0(a) result. |
+| **3** | Revised to **10–18 months**, replacing 18–48 — but the driver is *cluster count per week*, not market count (§11.0.1). One market per independent cluster holds `r̄` at the cross-cluster floor; taking more is net-negative. The estimate is entirely dependent on the Phase 0(a) sweep result. |
 | **5** | Paper trading becomes T1/T2-specific and gains an execution-realism requirement: short-horizon markets are where slippage is most likely to consume a modest edge. |
 
 ---

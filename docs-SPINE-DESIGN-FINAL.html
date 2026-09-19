@@ -1,0 +1,681 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;800&family=Spectral:wght@400;500;600&family=Source+Code+Pro:wght@400;600&display=swap">
+<title>SPINE Design and Roadmap</title>
+<style>
+  :root {
+    --bg: #f1f3f1;
+    --surface: #ffffff;
+    --surface-2: #f6f8f6;
+    --ink: #151c18;
+    --ink-soft: #57645c;
+    --ink-faint: #8b968f;
+    --line: #d4dbd6;
+    --line-strong: #b2bdb6;
+    --accent: #1f6b4a;
+    --accent-soft: #e0efe7;
+    --warn: #9c3a2a;
+    --warn-soft: #f9e6e2;
+    --shadow: 0 1px 2px rgba(21,28,24,.05), 0 14px 34px -22px rgba(21,28,24,.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1311; --surface: #171d19; --surface-2: #1e2521;
+      --ink: #e5eae7; --ink-soft: #9caaa2; --ink-faint: #6d7a73;
+      --line: #2c3631; --line-strong: #3d4a45;
+      --accent: #58b98c; --accent-soft: #14271e;
+      --warn: #e08066; --warn-soft: #2e1a15;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 34px -22px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1311; --surface: #171d19; --surface-2: #1e2521;
+    --ink: #e5eae7; --ink-soft: #9caaa2; --ink-faint: #6d7a73;
+    --line: #2c3631; --line-strong: #3d4a45;
+    --accent: #58b98c; --accent-soft: #14271e;
+    --warn: #e08066; --warn-soft: #2e1a15;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 34px -22px rgba(0,0,0,.9);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: 'Spectral', Georgia, serif; font-size: 16.5px; line-height: 1.62;
+    padding-inline: 20px; padding-block: 44px 76px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 46px; }
+  h1, h2, h3, h4, .ui { font-family: 'Figtree', system-ui, sans-serif; }
+  .mono, code, pre { font-family: 'Source Code Pro', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  /* masthead */
+  .masthead { border-bottom: 3px solid var(--accent); padding-bottom: 28px; }
+  .kicker { font-family: 'Source Code Pro', monospace; font-size: 11px; letter-spacing: .17em;
+            text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { font-size: clamp(31px, 5.4vw, 47px); font-weight: 800; letter-spacing: -.028em;
+       line-height: 1.04; margin: 13px 0 0; text-wrap: balance; }
+  .status-grid { display: grid; grid-template-columns: 116px 1fr; gap: 9px 20px; margin-top: 24px;
+                 font-size: 14.5px; }
+  @media (max-width: 540px) { .status-grid { grid-template-columns: 1fr; gap: 3px 0; } }
+  .status-grid dt { font-family: 'Source Code Pro', monospace; font-size: 11px; letter-spacing: .07em;
+                    text-transform: uppercase; color: var(--ink-faint); padding-top: 4px; }
+  .status-grid dd { margin: 0; color: var(--ink-soft); }
+  .status-grid dd b { color: var(--ink); font-family: 'Figtree', sans-serif; font-weight: 600; }
+
+  /* sections */
+  section > header { margin-bottom: 20px; }
+  .secnum { font-family: 'Source Code Pro', monospace; font-size: 12px; font-weight: 600;
+            letter-spacing: .1em; color: var(--accent); }
+  h2 { font-size: 28px; font-weight: 800; letter-spacing: -.022em; margin: 6px 0 0; text-wrap: balance; }
+  .lede { color: var(--ink-soft); max-width: 68ch; margin: 11px 0 0; }
+  h3 { font-size: 19px; font-weight: 600; letter-spacing: -.012em; margin: 28px 0 8px; }
+  h4 { font-size: 15.5px; font-weight: 600; margin: 20px 0 6px; }
+  p { margin: 0 0 13px; max-width: 72ch; }
+  ul, ol { max-width: 72ch; padding-left: 22px; margin: 0 0 13px; }
+  li { margin-bottom: 6px; }
+  strong { font-family: 'Figtree', sans-serif; font-weight: 600; }
+
+  code { font-size: .87em; background: var(--surface-2); border: 1px solid var(--line);
+         border-radius: 3px; padding: 1px 5px; }
+  pre { font-size: 12.5px; line-height: 1.55; background: var(--surface); border: 1px solid var(--line);
+        border-left: 3px solid var(--accent); border-radius: 3px; padding: 15px 17px;
+        overflow-x: auto; margin: 14px 0; }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  pre .c { color: var(--ink-faint); }
+
+  /* callouts */
+  .note { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+          border-radius: 0 4px 4px 0; padding: 17px 20px; margin: 16px 0; box-shadow: var(--shadow); }
+  .note p:last-child { margin-bottom: 0; }
+  .note.hard { border-left-color: var(--warn); background: var(--warn-soft); }
+  .note .tag { font-family: 'Figtree', sans-serif; font-size: 10.5px; font-weight: 600;
+               letter-spacing: .1em; text-transform: uppercase; color: var(--accent);
+               display: block; margin-bottom: 6px; }
+  .note.hard .tag { color: var(--warn); }
+
+  /* tables */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px;
+               background: var(--surface); box-shadow: var(--shadow); margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 14.5px; }
+  th { text-align: left; font-family: 'Figtree', sans-serif; font-size: 11px; font-weight: 600;
+       letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint);
+       padding: 11px 15px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  td { padding: 12px 15px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-family: 'Source Code Pro', monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .fail { color: var(--warn); font-weight: 600; }
+
+  /* figure */
+  figure { margin: 20px 0; background: var(--surface); border: 1px solid var(--line);
+           border-radius: 4px; padding: 22px 24px 16px; box-shadow: var(--shadow); }
+  svg { display: block; width: 100%; height: auto; max-width: 100%; }
+  figcaption { font-size: 14px; color: var(--ink-soft); margin-top: 14px; padding-top: 13px;
+               border-top: 1px solid var(--line); }
+  .ax { stroke: var(--line-strong); }
+  .grid { stroke: var(--line); }
+  .tk { fill: var(--ink-faint); font-family: 'Source Code Pro', monospace; font-size: 10px; }
+  .curve { stroke: var(--accent); fill: none; stroke-width: 2.5; stroke-linejoin: round; }
+  .under { fill: var(--warn); opacity: .10; }
+  .gateline { stroke: var(--warn); stroke-dasharray: 4 3; stroke-width: 1.3; }
+  .gatelbl { fill: var(--warn); font-family: 'Figtree', sans-serif; font-size: 10.5px; font-weight: 600; }
+  .zonelbl { font-family: 'Figtree', sans-serif; font-size: 11px; font-weight: 600; }
+
+  /* phases */
+  .phase { display: grid; grid-template-columns: 160px 1fr; gap: 24px; padding: 20px 0;
+           border-bottom: 1px solid var(--line); }
+  .phase:last-child { border-bottom: none; }
+  @media (max-width: 620px) { .phase { grid-template-columns: 1fr; gap: 8px; } }
+  .phase-k b { display: block; font-family: 'Figtree', sans-serif; font-size: 14px; font-weight: 600;
+               color: var(--accent); }
+  .phase-k span { font-family: 'Source Code Pro', monospace; font-size: 12px; color: var(--ink-faint); }
+  .phase-b h4 { margin-top: 0; font-size: 17px; }
+  .gate { margin-top: 10px; font-family: 'Source Code Pro', monospace; font-size: 12.5px;
+          background: var(--accent-soft); color: var(--accent); display: inline-block;
+          padding: 6px 11px; border-radius: 3px; }
+
+  footer { border-top: 1px solid var(--line-strong); padding-top: 22px; font-size: 13.5px;
+           color: var(--ink-faint); font-family: 'Figtree', sans-serif; }
+  footer p { max-width: 74ch; }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="kicker">Canonical · supersedes DESIGN-R3 and Plan_Rev_v2</div>
+  <h1>SPINE — Design and Roadmap</h1>
+  <dl class="status-grid">
+    <dt>Nature</dt>
+    <dd>A <b>design document</b>. No code has been written. Nothing here reports a test result, a build outcome, or a verified external fact.</dd>
+    <dt>Basis</dt>
+    <dd>DESIGN-R3, with round-3 review findings applied and the controls dropped by Plan_Rev_v2 restored.</dd>
+    <dt>New</dt>
+    <dd>The power calculation in §2 — promised across four prior revisions, computed here. It changes the roadmap.</dd>
+  </dl>
+</header>
+
+<section>
+  <header><div class="secnum">§0</div><h2>How to read this</h2></header>
+  <p><strong>§2 is the section that matters.</strong> It answers a question four previous documents deferred: how many resolved forecasts does it take to demonstrate this method works? The answer is large enough that it reorders the roadmap and raises a legitimate question about whether the project should proceed at all. Read it before the architecture.</p>
+  <p>Everything else is conventional — schema in §4, stage specifications in §5, roadmap in §7.</p>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§1</div><h2>Premise and scope</h2>
+    <p class="lede">This is <strong>(a)-with-gates</strong>: a forecast-publishing and evaluation system that may later trade, behind hard gates.</p>
+  </header>
+  <p>The trading subsystem is <strong>dormant, not absent</strong>. It exists in the design, is excluded from the default build, and cannot be enabled without passing every gate in §7 plus an explicit governance file. An earlier revision claimed trading had been "removed" — it was not, it was gated. That claim is retracted here.</p>
+
+  <h3>Why not pure trading</h3>
+  <p>SPINE's own boundary says that where a market prices something, the market is the better forecast, and the method's niche is the 2–10 year structural question no market trades. Polymarket is the liquid short-horizon venue the protocol says to defer to. Most of its contracts resolve in weeks to months — Layer 3, capped at 0.60 — while Stages 1–2 generate signal on 5–20 year timescales. Trading the bulk of that venue means systematically spending Layer 1 confidence on Layer 3 contracts: the exact failure the confidence firewall exists to prevent.</p>
+
+  <h3>Why not pure forecast-publishing</h3>
+  <p>Because a small population of long-dated markets may exist where the method both applies and can be tested against a price. Phase 0 determines whether that population is real. If it is not, the system stays forecast-only permanently and the trading subsystem is deleted rather than left dormant.</p>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§2</div><h2>The validation problem, quantified</h2>
+    <p class="lede">Four documents proposed a gate — "BSS &gt; 0 on ≥30 forecasts over 90 days," then <code>n_eff ≥ 10</code>, then <code>n_eff ≥ 40</code>. None was derived from a power analysis. Here is one.</p>
+  </header>
+
+  <h3>2.1 Derivation</h3>
+  <p>Let <code>p_b</code> be the benchmark probability and <code>p_m</code> the model's forecast, deviating by <code>δ</code>. The per-forecast Brier difference is:</p>
+  <pre><code>d = (p_b − o)² − (p_m − o)²
+  = −2δ(p_b − o) − δ²          <span class="c">where δ = p_m − p_b</span></code></pre>
+  <p>For a calibrated forecaster, expected improvement equals the variance of forecasts around the benchmark — the resolution term of the Murphy decomposition:</p>
+  <pre><code>E[d]   = E[δ²]
+Var[d] ≈ 4·E[δ²]·p_b(1 − p_b)</code></pre>
+  <p>With <code>B_base = p_b(1 − p_b)</code> and <code>BSS = E[d] / B_base</code>, the variance-to-effect ratio collapses to a form <em>independent of the base rate</em>:</p>
+  <pre><code>σ²/Δ² = 4·p_b(1−p_b) / E[δ²] = 4 / BSS</code></pre>
+  <p>For a one-sided test at α = 0.05 with 80% power, <code>(z<sub>α</sub> + z<sub>β</sub>)² = (1.645 + 0.842)² = 6.18</code>:</p>
+  <pre><code>n_eff  ≳  6.18 × 4 / BSS  =  <b>24.7 / BSS</b></code></pre>
+
+  <h3>2.2 What that costs</h3>
+  <figure>
+    <svg viewBox="0 0 640 282" role="img" aria-label="Required effective sample size against true Brier skill score, log scale, showing both proposed gates falling far below the required curve">
+      <path class="under" d="M91.2,47.3 L123,80.1 L176,105 L282,129.7 L388,144.5 L494,154.6 L600,163 L600,220 L91.2,220 Z"/>
+      <g class="grid" stroke-width="1">
+        <line x1="70" y1="30" x2="600" y2="30"/>
+        <line x1="70" y1="54.9" x2="600" y2="54.9"/>
+        <line x1="70" y1="87.7" x2="600" y2="87.7"/>
+        <line x1="70" y1="137.4" x2="600" y2="137.4"/>
+      </g>
+      <line class="gateline" x1="70" y1="220" x2="600" y2="220"/>
+      <line class="gateline" x1="70" y1="170.3" x2="600" y2="170.3"/>
+      <text class="gatelbl" x="76" y="216">proposed gate: n_eff ≥ 10 — requires BSS ≈ 2.47 (impossible)</text>
+      <text class="gatelbl" x="76" y="166">proposed gate: n_eff ≥ 40 — requires BSS ≈ 0.62</text>
+      <polyline class="curve" points="91.2,47.3 123,80.1 176,105 282,129.7 388,144.5 494,154.6 600,163"/>
+      <text class="zonelbl" x="330" y="200" text-anchor="middle" fill="var(--warn)">underpowered — cannot detect at 80% power</text>
+      <text class="zonelbl" x="400" y="72" text-anchor="middle" fill="var(--accent)">adequately powered</text>
+      <line class="ax" x1="70" y1="220" x2="600" y2="220" stroke-width="1.4"/>
+      <line class="ax" x1="70" y1="30" x2="70" y2="220" stroke-width="1.4"/>
+      <g class="tk" text-anchor="end">
+        <text x="63" y="223">10</text><text x="63" y="174">40</text><text x="63" y="141">100</text>
+        <text x="63" y="91">400</text><text x="63" y="58">1000</text><text x="63" y="34">2000</text>
+      </g>
+      <g class="tk" text-anchor="middle">
+        <text x="123" y="236">0.05</text><text x="176" y="236">0.10</text><text x="282" y="236">0.20</text>
+        <text x="388" y="236">0.30</text><text x="494" y="236">0.40</text><text x="600" y="236">0.50</text>
+      </g>
+      <text class="tk" x="335" y="254" text-anchor="middle">true Brier skill score (BSS)</text>
+      <text class="tk" x="335" y="272" text-anchor="middle">required effective sample size n_eff (log scale) — curve is n_eff = 24.7 / BSS</text>
+    </svg>
+    <figcaption>Both previously proposed gates sit in the underpowered region across the entire plausible range of effect sizes. <code>n_eff ≥ 10</code> would require BSS ≈ 2.47 for 80% power — and BSS is bounded above by 1.0, so that gate <strong>cannot be passed by any real skill level</strong>. Any pass would be noise.</figcaption>
+  </figure>
+
+  <div class="tablewrap"><table>
+    <thead><tr><th>True BSS</th><th>Required n_eff</th><th>Interpretation</th></tr></thead>
+    <tbody>
+      <tr><td class="num">0.02</td><td class="num">~1,235</td><td>Marginal edge</td></tr>
+      <tr><td class="num">0.05</td><td class="num">~494</td><td>Modest, realistic edge</td></tr>
+      <tr><td class="num">0.10</td><td class="num">~247</td><td>Strong edge</td></tr>
+      <tr><td class="num">0.20</td><td class="num">~124</td><td>Very strong</td></tr>
+      <tr><td class="num">0.30</td><td class="num">~82</td><td>Superforecaster territory</td></tr>
+      <tr><td class="num">0.50</td><td class="num">~49</td><td>Implausible for geopolitics</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note hard">
+    <span class="tag">The binding constraint</span>
+    <p><code>n_eff</code>, not raw forecast count, enters the formula. Stage 4 exists because correlated forecasts are not independent evidence. Therefore: <strong>you cannot solve the power problem by making more forecasts about the same thesis.</strong></p>
+    <p>Twenty sub-forecasts downstream of one Iran thesis contribute <code>n_eff ≈ 1.2</code>, not 20. Reaching <code>n_eff ≈ 250</code> requires roughly 250 <em>genuinely independent</em> questions — different regions, mechanisms, causal structures. That is a constraint on subject matter, not on engineering.</p>
+  </div>
+
+  <h3>2.3 Levers, honestly assessed</h3>
+  <ol>
+    <li><strong>Accept the timeline.</strong> At 2–4 independent structural forecasts per week, <code>n_eff ≈ 250</code> is 2–4 years of production <em>before</em> deadlines resolve. First verdict is plausibly 5+ years out.</li>
+    <li><strong>Raise throughput.</strong> Stage 3 is the per-forecast bottleneck. Partial automation is the highest-leverage engineering work in the project. Measure it in Phase 0.</li>
+    <li><strong>Claim less.</strong> Only assert an edge large enough to be detectable at achievable <code>n_eff</code>. Honest — and it makes the claim less interesting.</li>
+    <li><strong>Paired scoring where a market exists.</strong> Scoring against the market price on the same question is a paired design, removing the variance from question-difficulty heterogeneity — often the dominant term. But the effect size against a market is smaller than against a naive base rate, so the net effect on <code>n</code> must be modeled, not assumed. Worth modeling in Phase 1; not a guaranteed win.</li>
+    <li><strong>Narrow the domain.</strong> Pick a question class with many genuinely independent instances (sovereign fiscal stress across many countries) rather than one where everything correlates. This is the only lever that raises <code>n_eff</code> rather than just raw <code>n</code>.</li>
+  </ol>
+
+  <h3>2.4 Register A / Register B</h3>
+  <p><strong>Register A — short-horizon, Layer 3.</strong> Verifies the pipeline runs, data flows, scoring computes. Gate: <code>n_eff</code> per the table above for the effect size claimed, cluster-bootstrap 95% CI lower bound on BSS &gt; 0. Passing Register A is evidence the <em>plumbing</em> works — not evidence of structural edge, because nothing resolving inside months is Layer 1.</p>
+  <p><strong>Register B — long-horizon, Layer 1/2.</strong> No outcome gate on any human timescale. Interim <em>process</em> metrics only: zero chain-verification failures; every forecast reconstructible from stored inputs (see §5.6 on the LLM exception); and a one-sided calibration floor on the Layer 3 subset — Brier <em>not worse</em> than base rate by more than 2σ. Stated one-sided deliberately: a two-sided "within 2σ" band would fail a system that genuinely beats the benchmark.</p>
+
+  <div class="note hard">
+    <span class="tag">Permanent disclosure</span>
+    <p>The Layer 1 structural claim <strong>remains unvalidated</strong>, and will remain so until enough long-dated forecasts resolve — realistically a decade. No document produced by this project may describe it otherwise.</p>
+  </div>
+
+  <h3>2.5 Historical replay is a smoke test</h3>
+  <p>Replaying historical markets against forecasts generated now is hindsight, not pre-registration. Stage 1 reference-class selection and Stage 3 incentive analysis are human-judgment steps that cannot be blinded to post-T information in practice. Backtest is plumbing verification only; it never gates credibility.</p>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§3</div><h2>Architecture</h2>
+    <p class="lede">Four services. Three run by default; the fourth is absent from the default image entirely.</p>
+  </header>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Service</th><th>Role</th><th>Default</th></tr></thead>
+    <tbody>
+      <tr><td class="num">etl</td><td>Pulls structural indicators and market metadata; writes vintage-tagged rows</td><td>running</td></tr>
+      <tr><td class="num">forecast-api</td><td>Stage 0–4 pipeline; registers forecasts; serves <code>/forecast</code></td><td>running</td></tr>
+      <tr><td class="num">monitor</td><td>Resolution capture, scoring, <code>/metrics</code>, <code>/health</code></td><td>running</td></tr>
+      <tr><td class="num">order_manager</td><td>Trading. Not built into the default image.</td><td class="fail">absent</td></tr>
+    </tbody>
+  </table></div>
+  <p>Each service is a separate container from one image, with <code>tini</code> as PID 1, <code>exec</code>-ed so it receives SIGTERM directly, and its own <code>asyncio.run()</code>. They communicate through SQLite on the mounted volume. No socket IPC — it adds coupling with no purpose.</p>
+  <div class="note">
+    <span class="tag">Operational risk</span>
+    <p>SQLite with three writers is a real hazard. Set <code>PRAGMA journal_mode=WAL</code> and <code>PRAGMA busy_timeout=5000</code> on every connection. WAL is unreliable on network filesystems, so the data volume must be local disk. <code>database is locked</code> is the most likely runtime failure in this design.</p>
+  </div>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§4</div><h2>Data model</h2>
+    <p class="lede">Probability is stored as <strong>basis points in an INTEGER column</strong>, which removes float-comparison failures against the cap constraints entirely.</p>
+  </header>
+
+<pre><code>PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+
+<span class="c">-- ============================================================
+-- Vintage-tagged structural indicators (Stage 2 input).
+-- The as_of / published_at split is the anti-lookahead control.
+-- ============================================================</span>
+CREATE TABLE raw_indicators (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    source        TEXT NOT NULL,        <span class="c">-- 'ALFRED', 'IMF', 'EIA', ...</span>
+    indicator     TEXT NOT NULL,
+    country       TEXT,
+    value         REAL NOT NULL,
+    as_of         DATE NOT NULL,        <span class="c">-- date the observation REFERS TO</span>
+    published_at  DATE NOT NULL,        <span class="c">-- date the value BECAME PUBLIC</span>
+    vintage_id    TEXT,
+    ingested_at   TIMESTAMP NOT NULL,
+    UNIQUE (source, indicator, country, as_of, published_at)
+);
+CREATE INDEX idx_indicators_lookup
+    ON raw_indicators (indicator, country, published_at, as_of);
+
+<span class="c">-- ============================================================
+-- Reference classes (Stage 1) — frozen before the case is examined
+-- ============================================================</span>
+CREATE TABLE reference_classes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL UNIQUE,
+    description  TEXT NOT NULL,
+    n            INTEGER NOT NULL CHECK (n &gt;= 0),
+    k            INTEGER NOT NULL CHECK (k &gt;= 0 AND k &lt;= n),
+    alpha        REAL NOT NULL DEFAULT 1.0,
+    beta         REAL NOT NULL DEFAULT 3.0,
+    frozen_at    TIMESTAMP NOT NULL,     <span class="c">-- NOT NULL: the freeze IS the control</span>
+    freeze_note  TEXT NOT NULL
+);
+
+CREATE TABLE reference_class_members (
+    class_id    INTEGER NOT NULL REFERENCES reference_classes(id),
+    event_name  TEXT NOT NULL,
+    event_date  DATE NOT NULL,          <span class="c">-- when the event OCCURRED</span>
+    outcome     INTEGER NOT NULL CHECK (outcome IN (0, 1)),
+    added_at    TIMESTAMP NOT NULL,     <span class="c">-- audit: when it entered the class</span>
+    source_url  TEXT,
+    PRIMARY KEY (class_id, event_name)
+);
+
+<span class="c">-- ============================================================
+-- Forecasts: the immutable pre-registration commitment.
+-- Nothing discovered or recomputed later lives here.
+-- ============================================================</span>
+CREATE TABLE forecasts (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    forecast_hash          TEXT NOT NULL UNIQUE,
+    prev_hash              TEXT NOT NULL UNIQUE,   <span class="c">-- genesis = 64 zeros</span>
+    event                  TEXT NOT NULL,
+    resolution_criterion   TEXT NOT NULL,
+    deadline               DATE NOT NULL,
+    layer                  INTEGER NOT NULL CHECK (layer IN (1, 2, 3)),
+    probability_bp         INTEGER NOT NULL,
+    base_probability_bp    INTEGER NOT NULL,       <span class="c">-- Stage 1 p0</span>
+    reference_class_id     INTEGER NOT NULL REFERENCES reference_classes(id),
+    pressure               REAL,                   <span class="c">-- Stage 2 P</span>
+    lambda_version         TEXT NOT NULL,          <span class="c">-- which frozen lambda produced this</span>
+    incentive_factor       REAL,                   <span class="c">-- Stage 3 rho^(N-1)</span>
+    admission_record       TEXT NOT NULL,          <span class="c">-- Stage 0 record, canonical JSON</span>
+    market_id              TEXT,                   <span class="c">-- nullable: no market need exist</span>
+    market_resolution_text TEXT,
+    market_resolution_hash TEXT,
+    created_at             TIMESTAMP NOT NULL,
+    source                 TEXT NOT NULL,          <span class="c">-- 'human' | 'llm-assisted'</span>
+    source_detail          TEXT,
+
+    <span class="c">-- Firewall: symmetric around 0.5. Caps BOTH tails.
+    -- A Layer 3 forecast of 0.02 is a 98% claim on the negation.</span>
+    CHECK (probability_bp &gt; 0 AND probability_bp &lt; 10000),
+    CHECK (abs(probability_bp - 5000) &lt;=
+           CASE layer WHEN 1 THEN 3500 WHEN 2 THEN 2000 ELSE 1000 END)
+);
+
+<span class="c">-- ============================================================
+-- DAG for Stage 4. Correlation has NO default: it must be stated.
+-- ============================================================</span>
+CREATE TABLE forecast_edges (
+    parent_hash      TEXT NOT NULL REFERENCES forecasts(forecast_hash),
+    child_hash       TEXT NOT NULL REFERENCES forecasts(forecast_hash),
+    conditional_prob REAL NOT NULL CHECK (conditional_prob &gt; 0 AND conditional_prob &lt; 1),
+    correlation      REAL NOT NULL CHECK (correlation &gt;= -1 AND correlation &lt;= 1),
+    created_at       TIMESTAMP NOT NULL,
+    PRIMARY KEY (parent_hash, child_hash),
+    CHECK (parent_hash &lt;&gt; child_hash)      <span class="c">-- no self-edges</span>
+);
+
+<span class="c">-- ============================================================
+-- Append-only logs for everything discovered after registration
+-- ============================================================</span>
+CREATE TABLE forecast_adjudications (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    forecast_hash        TEXT NOT NULL REFERENCES forecasts(forecast_hash),
+    divergence_flag      INTEGER NOT NULL CHECK (divergence_flag IN (0, 1)),
+    market_text_at_check TEXT,
+    market_hash_at_check TEXT,
+    adjudication_note    TEXT NOT NULL,
+    adjudicator          TEXT NOT NULL,
+    checked_at           TIMESTAMP NOT NULL
+);
+
+CREATE TABLE forecast_neff_history (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    forecast_hash TEXT NOT NULL REFERENCES forecasts(forecast_hash),
+    effective_n   REAL NOT NULL CHECK (effective_n &gt; 0),
+    cluster_id    TEXT NOT NULL,
+    dag_version   INTEGER NOT NULL,
+    computed_at   TIMESTAMP NOT NULL
+);
+
+<span class="c">-- ============================================================
+-- Outcomes. Brier is NULL for anything not scored.
+-- ============================================================</span>
+CREATE TABLE metrics (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    forecast_id          INTEGER NOT NULL UNIQUE REFERENCES forecasts(id),
+    outcome              TEXT NOT NULL CHECK (outcome IN
+                            ('resolved_yes','resolved_no','void','disputed','unresolvable')),
+    brier                REAL,          <span class="c">-- NULL when outcome is not scorable</span>
+    resolution_timestamp TIMESTAMP,
+    resolution_source    TEXT NOT NULL,
+    processed_at         TIMESTAMP NOT NULL,
+    scoring_note         TEXT,
+    CHECK ((outcome IN ('resolved_yes','resolved_no')) = (brier IS NOT NULL))
+);</code></pre>
+
+  <h3>4.1 Integrity triggers</h3>
+<pre><code><span class="c">-- Forecasts are immutable. Full stop.</span>
+CREATE TRIGGER forecasts_no_update BEFORE UPDATE ON forecasts
+BEGIN SELECT RAISE(ABORT, 'forecasts is immutable; write to an adjudication log'); END;
+
+CREATE TRIGGER forecasts_no_delete BEFORE DELETE ON forecasts
+BEGIN SELECT RAISE(ABORT, 'forecasts is immutable; records are never deleted'); END;
+
+<span class="c">-- The chain must actually chain. Without this, prev_hash is decorative.</span>
+CREATE TRIGGER forecasts_chain_head BEFORE INSERT ON forecasts
+FOR EACH ROW WHEN (SELECT COUNT(*) FROM forecasts) &gt; 0
+BEGIN
+    SELECT RAISE(ABORT, 'prev_hash does not match current chain head')
+    WHERE NEW.prev_hash &lt;&gt; (SELECT forecast_hash FROM forecasts ORDER BY id DESC LIMIT 1);
+END;
+
+CREATE TRIGGER forecasts_chain_genesis BEFORE INSERT ON forecasts
+FOR EACH ROW WHEN (SELECT COUNT(*) FROM forecasts) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'genesis record must use the genesis sentinel')
+    WHERE NEW.prev_hash &lt;&gt;
+          '0000000000000000000000000000000000000000000000000000000000000000';
+END;
+
+<span class="c">-- The reference class must have been frozen BEFORE the forecast was made.</span>
+CREATE TRIGGER forecasts_class_frozen_first BEFORE INSERT ON forecasts
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT, 'reference class was not frozen before forecast creation')
+    WHERE (SELECT frozen_at FROM reference_classes WHERE id = NEW.reference_class_id)
+          &gt;= NEW.created_at;
+END;</code></pre>
+  <p><code>prev_hash</code> is <code>UNIQUE</code> and <code>NOT NULL</code> with a genesis sentinel rather than <code>NULL</code>, because SQLite permits multiple <code>NULL</code>s in a unique column — which would let the chain fork.</p>
+
+  <h3>4.2 Canonicalization</h3>
+  <p>Hashes are worthless if two implementations serialize differently. Canonical form is <strong>RFC 8785 (JSON Canonicalization Scheme)</strong>: UTF-8 without BOM; object keys sorted by UTF-16 code unit; no insignificant whitespace; numbers in shortest round-trip form; timestamps as ISO-8601 UTC at exactly millisecond precision with a <code>Z</code> suffix. Probabilities are integers, which sidesteps float formatting entirely.</p>
+<pre><code>content       = JCS({event, resolution_criterion, deadline, layer, probability_bp,
+                     base_probability_bp, reference_class_id, lambda_version,
+                     admission_record, market_id, market_resolution_hash,
+                     created_at, source, source_detail})
+forecast_hash = SHA256( content || prev_hash )       <span class="c">-- hex, lowercase</span></code></pre>
+  <p><code>created_at</code> is inside the hash, so backdating breaks verification. <code>probability_bp</code> is the <em>final published</em> value, not a pre-cap intermediate — you commit to what you publish. A golden vector lives in <code>tests/test_schema.py</code> so any reimplementation can be checked against it.</p>
+</section>
+
+<section>
+  <header><div class="secnum">§5</div><h2>Stage specifications</h2></header>
+
+  <h3>5.1 Stage 0 — Admission</h3>
+  <p>Not a regex. A structured checklist producing an auditable record stored with the forecast.</p>
+<pre><code>@dataclass(frozen=True)
+class AdmissionRecord:
+    admitted: bool
+    counterfactual_observable: str | None   <span class="c"># what would be seen if this is false</span>
+    adjudicator: str | None                 <span class="c"># who can check it, without asking us</span>
+    deadline_unambiguous: bool
+    resolution_source: str | None
+    reasons: list[str]
+    reviewer: str                           <span class="c"># 'human:&lt;name&gt;' | 'llm:&lt;model&gt;@&lt;prompt_ver&gt;'</span>
+    timestamp: str</code></pre>
+  <p>All four substantive checks must pass: a counterfactual observable is named; a disinterested adjudicator is identified; the deadline is a specific date; a named verifiable resolution source exists. Failure on any one means the claim is logged as commentary and never enters the track record — it can never be a hit either.</p>
+  <div class="note">
+    <span class="tag">Market binding is recorded, not enforced</span>
+    <p>When a market exists, store its resolution text and hash. Divergence writes a row to <code>forecast_adjudications</code> and requires human adjudication. It <strong>never auto-disqualifies</strong> a standing pre-registered forecast — Polymarket amends resolution text post-listing, and a benign clarification must not void the record.</p>
+  </div>
+
+  <h3>5.2 Stage 1 — Structural base rate</h3>
+<pre><code>p0 = (k + α) / (n + α + β)          <span class="c">-- Beta(1, 3) default for rare-event classes</span></code></pre>
+  <p>The class is selected and <code>frozen_at</code> stamped <strong>before</strong> the case is examined; the trigger in §4.1 enforces the ordering. Members carry both <code>event_date</code> and <code>added_at</code>, so retroactive additions are visible.</p>
+
+  <h3>5.3 Stage 2 — Pressure vectors</h3>
+<pre><code>P         = Σ wᵢ · z(dxᵢ/dt)          <span class="c">-- standardized trends, not levels</span>
+logit(p1) = logit(p0) + λ · P</code></pre>
+  <p><strong>Window:</strong> 5 years default; 10 years for debt trajectories and demography, which move on decades. A 12-month window — proposed in an earlier revision — reads short-run fluctuation as structural pressure and is rejected by a property test.</p>
+  <p><strong>λ calibration, three splits.</strong> The previous procedure grid-searched λ to minimize Brier <em>on the holdout</em>, which makes the holdout training data and biases the reported performance.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Split</th><th>Period</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td>Fit</td><td class="num">2005-01-01 – 2014-12-31</td><td>Feature construction, weight estimation</td></tr>
+      <tr><td>Validation</td><td class="num">2015-01-01 – 2019-12-31</td><td>Grid search λ ∈ [0, 2] step 0.05</td></tr>
+      <tr><td>Test</td><td class="num">2020-01-01 – 2024-12-31</td><td><strong>Untouched</strong> until λ is frozen. Examined once.</td></tr>
+    </tbody>
+  </table></div>
+  <p>λ and its freeze date are committed to <code>spine_config/lambda_frozen.yaml</code>. Re-fitting requires a governance decision and a new <code>lambda_version</code>, recorded on every forecast so old forecasts stay attributable to the parameter that produced them.</p>
+  <div class="note hard">
+    <span class="tag">Feasibility risk</span>
+    <p>All of this assumes vintage series exist for the calibration window. US macro is well covered by ALFRED; IMF, World Bank and EIA vintage coverage is uneven. <strong>Phase 0 audits this</strong> rather than discovering the gap mid-calibration.</p>
+  </div>
+
+  <h3>5.4 Stage 3 — Incentive equilibrium</h3>
+  <p>Per actor: choice set, payoff ordering, information state. Check whether the predicted action is a best response — and state which payoff ordering would make it not one.</p>
+<pre><code>p ← p · ρ^(N−1)        <span class="c">-- N = actors who must coordinate without enforcement; ρ ≈ 0.7</span></code></pre>
+  <div class="note hard">
+    <span class="tag">Project bottleneck</span>
+    <p>§2 requires on the order of 250 independent forecasts. If Stage 3 costs four hours of analyst time each, that is 1,000 hours before the resolution horizon is even reached. Phase 0 measures the real per-forecast cost; partial automation here is the highest-leverage engineering work available.</p>
+  </div>
+
+  <h3>5.5 Stage 4 — Node independence</h3>
+<pre><code>P(B)  = P(B|A) · P(A)
+n_eff = n / (1 + (n−1)·r̄)              <span class="c">-- Kish design effect</span></code></pre>
+  <p><code>correlation</code> has <strong>no default value</strong>. An unestimated edge would otherwise default to 0, meaning "independent," which inflates <code>n_eff</code> — the precise bias this stage exists to remove. The schema forces an explicit number. <code>n_eff</code> is recomputed whenever the DAG changes; each recomputation appends to <code>forecast_neff_history</code> rather than mutating the forecast.</p>
+
+  <h3>5.6 Stage 5 — Scoring</h3>
+  <p>Per-forecast Brier only. <strong>BSS is a property of a set and is never stored per row.</strong></p>
+<pre><code>B   = mean((pᵢ − oᵢ)²)
+B   = reliability − resolution + uncertainty       <span class="c">-- Murphy decomposition</span>
+BSS = 1 − B_model / B_base</code></pre>
+  <p><strong>Cluster bootstrap, not naive bootstrap.</strong> Resampling individual forecasts assumes independence — the same violation Stage 4 exists to correct, reappearing inside the gate Stage 4 feeds:</p>
+  <ol>
+    <li>Partition resolved forecasts into correlation clusters from the DAG.</li>
+    <li>Resample <strong>whole clusters</strong> with replacement, to the original cluster count.</li>
+    <li>Recompute BSS per resample. 10,000 resamples.</li>
+    <li>Report the 2.5th percentile as the lower bound. The gate uses the lower bound; the point estimate is reported but never gates.</li>
+  </ol>
+  <p><code>void</code> outcomes are excluded from scoring, not counted as misses. <code>disputed</code> blocks scoring until adjudicated. <code>unresolvable</code> is excluded and tracked separately as a Stage 0 quality signal — a rising rate means admission is too lax.</p>
+  <div class="note">
+    <span class="tag">Reproducibility and the LLM exception</span>
+    <p>Register B requires forecasts be reconstructible from stored inputs. That is achievable for human-sourced forecasts. For <code>llm-assisted</code> sources it is not — inference endpoints drift, retire, and rarely guarantee determinism. Reproducibility is therefore defined as <strong>auditable</strong>: inputs, prompt version, model identifier and raw output are all stored, so a reviewer can verify what was done even when it cannot be re-run bit-for-bit. LLM-assisted forecasts are reported as a separate stratum in every calibration summary.</p>
+  </div>
+</section>
+
+<section>
+  <header><div class="secnum">§6</div><h2>Safety defaults</h2></header>
+  <ul>
+    <li><code>SPINE_MODE=paper</code> is the default and the only mode in the default image. Live requires <code>SPINE_MODE=live</code> <strong>and</strong> the governance file <code>/data/go_live</code> — two controls, not three. More flags is more mistake surface, not more safety.</li>
+    <li><code>order_manager</code> is <strong>not built into the default image</strong>. Enabling trading is a rebuild, not a flag flip.</li>
+    <li>Secrets are read-only file mounts under <code>/run/secrets/</code>, read once at startup, never exported to the environment. The default image mounts only the read-only market-data key; no CLOB credential is present unless trading is explicitly built in.</li>
+    <li>Kill switch: <code>monitor</code> polls <code>/data/KILL</code> every 5 seconds and sets <code>run_state.halted=1</code>. Every service checks that flag before each unit of work and before any write. In-flight work completes or rolls back; nothing new starts.</li>
+    <li>Health failure forces paper mode — <code>forecast-api</code> returns 503 and any trading service refuses to start. The check writes <code>run_state.health_ok</code>; it is an interlock, never a log line.</li>
+    <li>Clock: NTP syncs <strong>on the host</strong>. The container only <em>measures</em> drift against an external source and fails health beyond 2 seconds. NTP inside a container needs <code>CAP_SYS_TIME</code> and fights the host kernel clock.</li>
+    <li>Logging to stdout with <code>PYTHONUNBUFFERED=1</code>, JSON-structured, Docker rotation at <code>max-size=10m max-file=5</code>. No <code>nohup</code>.</li>
+  </ul>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§7</div><h2>Roadmap</h2>
+    <p class="lede">Every gate must pass before the next phase begins. Phase 0 can end the project, which is the point of putting it first.</p>
+  </header>
+
+  <div class="phase">
+    <div class="phase-k"><b>Phase 0</b><span>2 weeks</span></div>
+    <div class="phase-b">
+      <h4>Feasibility — three audits, any of which can stop the project</h4>
+      <p><strong>Market screen:</strong> tag every open market by horizon and depth; emit <code>zone</code> (structural ≥ 2 yr &amp; ≥ $10k, contingent &lt; 6 mo &amp; ≥ $5k) and <code>firewall_cap</code>. <strong>Vintage audit:</strong> confirm point-in-time series exist for every Stage 2 indicator across 2005–2024. <strong>Throughput pilot:</strong> run five forecasts end-to-end by hand and measure wall-clock time, Stage 3 especially.</p>
+      <div class="gate">GATE: vintage coverage sufficient · measured throughput consistent with §2.2 · documented go/no-go acknowledging §2. Fewer than 5 structural-zone markets → trading subsystem is deleted, not deferred.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-k"><b>Phase 1</b><span>4 weeks</span></div>
+    <div class="phase-b">
+      <h4>Core library and schema</h4>
+      <p>The five stages as a library, the §4 schema with migrations, and the test suite. No API, no trading, no container.</p>
+      <div class="gate">GATE: UPDATE aborts · out-of-cap rejected at BOTH tails · forged prev_hash refused · canonicalization golden vector matches · self-edge rejected · unfrozen class rejected. Coverage reported but behaviour is the gate.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-k"><b>Phase 2</b><span>3 weeks</span></div>
+    <div class="phase-b">
+      <h4>Pre-registration engine</h4>
+      <p><code>/forecast</code>, <code>/metrics</code>, <code>/health</code>. Resolution capture. Cluster-bootstrap scoring. Backtest runner, labelled a smoke test.</p>
+      <div class="gate">GATE: forecasts register and verify end-to-end · chain verifies over a seeded history · a forecast is demonstrably reconstructible from stored inputs alone</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-k"><b>Phase 3</b><span>18–48 months</span></div>
+    <div class="phase-b">
+      <h4>Register A accumulation</h4>
+      <p>Produce genuinely independent pre-registered forecasts and wait.</p>
+      <div class="gate">GATE: cluster-bootstrap 95% CI lower bound on BSS &gt; 0, at the n_eff required by §2.2 for the effect size claimed</div>
+      <div class="note hard" style="margin-top:14px">
+        <span class="tag">The honest headline</span>
+        <p>At 2–4 independent forecasts per week, reaching <code>n_eff ≈ 250</code> takes years — and that is before deadlines resolve. No amount of engineering shortens it. Everything before this phase is preparation; <strong>this phase is the project</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-k"><b>Phase 4</b><span>2 weeks · parallel with 3</span></div>
+    <div class="phase-b">
+      <h4>Production container</h4>
+      <p>Multi-stage CPU-only build, <code>tini</code> PID 1, file secrets, <code>HEALTHCHECK</code> using <code>urllib</code> — <code>python:3.13-slim</code> ships no curl — WAL configured, log rotation.</p>
+      <div class="gate">GATE: clean build · docker stop shuts down gracefully · restart leaves the chain verifiable with no duplicate forecasts</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-k"><b>Phase 5</b><span>optional · 3 weeks</span></div>
+    <div class="phase-b">
+      <h4>Paper trading</h4>
+      <p>Only if Phase 0 found a real structural-zone market population. Order-book snapshots, fees and slippage, position sizing on <strong>cluster <code>n_eff</code></strong> rather than position count.</p>
+      <div class="gate">GATE: positive simulated P&amp;L after realistic costs · per-cluster exposure ≤ 10% of notional</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-k"><b>Phase 6</b><span>optional · ongoing</span></div>
+    <div class="phase-b">
+      <h4>Live</h4>
+      <p>Requires a rebuild including <code>order_manager</code>, Phases 3 and 5 both passed, the governance file, and minimum position sizing with hard daily-loss and open-notional caps enforced in code. Automatic reversion to paper on breach or calibration decay. Deterministic client order IDs; reconciliation against the exchange before the strategy loop may run.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§8</div><h2>What could kill this</h2>
+    <p class="lede">Stated plainly, so nobody is surprised later.</p>
+  </header>
+  <ol>
+    <li><strong>The power requirement.</strong> §2 may simply make validation unaffordable in time. Most likely project-ending finding, and knowable in Phase 0.</li>
+    <li><strong>Correlation.</strong> If the questions the method addresses are all downstream of a handful of theses, <code>n_eff</code> saturates and no amount of output produces evidence.</li>
+    <li><strong>Vintage data gaps.</strong> If point-in-time series don't exist for the Stage 2 indicators, λ cannot be calibrated honestly and Stage 2 becomes decorative.</li>
+    <li><strong>Stage 3 cost.</strong> If a forecast costs a day of analyst time, Phase 3 doubles or worse.</li>
+    <li><strong>Reflexivity, if trading is ever enabled.</strong> Thin markets move when you trade them; capacity in the qualifying sliver may be too small to matter.</li>
+  </ol>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§9</div><h2>Unverified external facts</h2>
+    <p class="lede">Nothing below has been checked. Confirm each before building.</p>
+  </header>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Item</th><th>Status</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Polymarket Python client</td><td class="fail">UNVERIFIED</td><td><code>py-clob-client</code> is the one I am aware of. An earlier revision asserted <code>polymarket-data-client</code> v0.1.3 "after checking PyPI" — that check did not occur.</td></tr>
+      <tr><td><code>python:3.13-slim</code> digest</td><td class="fail">UNVERIFIED</td><td>Pin by full digest, not tag.</td></tr>
+      <tr><td><code>ghcr.io/astral-sh/uv</code></td><td class="fail">UNVERIFIED</td><td>Confirm image path and pin a version.</td></tr>
+      <tr><td><code>tini</code> availability</td><td class="fail">UNVERIFIED</td><td>Confirm whether it needs <code>apt install</code> on the slim base.</td></tr>
+      <tr><td>Polymarket CLOB endpoints</td><td class="fail">UNVERIFIED</td><td>Only relevant if Phase 6 is ever reached.</td></tr>
+      <tr><td>ALFRED / IMF / EIA vintage coverage</td><td class="fail">UNVERIFIED</td><td>Phase 0 audit item. Material to §5.3.</td></tr>
+      <tr><td>Polymarket geographic restrictions</td><td class="fail">UNVERIFIED</td><td>Relevant before any live deployment.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§10</div><h2>Next artifacts</h2>
+    <p class="lede">No further prose revisions. In order:</p>
+  </header>
+  <ol>
+    <li><code>db/schema.sql</code> — §4 verbatim, plus migrations.</li>
+    <li><code>tests/test_schema.py</code> — the Phase 1 integrity tests, <strong>unrun</strong>, with no claimed pass counts.</li>
+    <li><code>spine_config/lambda_frozen.yaml</code> — the three splits from §5.3, freeze procedure documented.</li>
+    <li>Phase 0 scripts: market screen, vintage audit, throughput pilot harness.</li>
+  </ol>
+  <p>Items 1 and 2 are mechanical from this document. Item 4 is what actually determines whether the project proceeds.</p>
+</section>
+
+<footer>
+  <p>Power calculation in §2 uses a normal approximation and assumes calibrated forecasts; the cluster bootstrap in §5.6 is authoritative in practice and will differ somewhat at small samples. The derivation's base-rate independence is a property of the approximation, not an exact result.</p>
+  <p>Borrowed tools: Beta-smoothed base rates, the Kish design effect, the Murphy decomposition, and RFC 8785 canonicalization are standard. The layer firewall, the register split, and the roadmap gating are this project's own.</p>
+</footer>
+
+</div>

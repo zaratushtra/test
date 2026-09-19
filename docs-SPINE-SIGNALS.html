@@ -1,0 +1,454 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;800&family=Bitter:wght@400;500;600&family=Inconsolata:wght@400;600&display=swap">
+<title>SPINE Signal Architecture</title>
+<style>
+  :root {
+    --bg: #eef1f2; --surface: #ffffff; --surface-2: #f5f8f8;
+    --ink: #121a1d; --ink-soft: #536166; --ink-faint: #8a979b;
+    --line: #d2dade; --line-strong: #adb9bd;
+    --accent: #0c6d78; --accent-soft: #dcedef;
+    --warn: #a8452c; --warn-soft: #f9e7e1;
+    --shadow: 0 1px 2px rgba(18,26,29,.05), 0 14px 34px -22px rgba(18,26,29,.42);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1214; --surface: #151c1f; --surface-2: #1c2427;
+      --ink: #e2e9ea; --ink-soft: #97a6ab; --ink-faint: #6b787c;
+      --line: #2a3438; --line-strong: #3b474b;
+      --accent: #48bac6; --accent-soft: #10292d;
+      --warn: #e28265; --warn-soft: #2f1a14;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 34px -22px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1214; --surface: #151c1f; --surface-2: #1c2427;
+    --ink: #e2e9ea; --ink-soft: #97a6ab; --ink-faint: #6b787c;
+    --line: #2a3438; --line-strong: #3b474b;
+    --accent: #48bac6; --accent-soft: #10292d;
+    --warn: #e28265; --warn-soft: #2f1a14;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 34px -22px rgba(0,0,0,.9);
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink);
+         font-family: 'Bitter', Georgia, serif; font-size: 16px; line-height: 1.62;
+         padding-inline: 20px; padding-block: 44px 76px; }
+  .wrap { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+  h1,h2,h3,h4,.ui { font-family: 'Outfit', system-ui, sans-serif; }
+  .mono, code, pre { font-family: 'Inconsolata', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  .masthead { border-bottom: 3px solid var(--accent); padding-bottom: 26px; }
+  .kicker { font-family: 'Inconsolata', monospace; font-size: 12px; letter-spacing: .16em;
+            text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { font-size: clamp(30px,5.3vw,46px); font-weight: 800; letter-spacing: -.028em;
+       line-height: 1.05; margin: 12px 0 0; text-wrap: balance; }
+  .standfirst { font-size: 17.5px; color: var(--ink-soft); max-width: 63ch; margin: 15px 0 0; }
+  .disclaimer { margin-top: 20px; padding: 13px 16px; background: var(--warn-soft);
+                border-radius: 4px; font-size: 14px; color: var(--ink-soft); }
+  .disclaimer b { color: var(--warn); font-family: 'Outfit', sans-serif; }
+
+  section > header { margin-bottom: 20px; }
+  .secnum { font-family: 'Inconsolata', monospace; font-size: 13px; font-weight: 600;
+            letter-spacing: .1em; color: var(--accent); }
+  h2 { font-size: 27px; font-weight: 800; letter-spacing: -.022em; margin: 5px 0 0; text-wrap: balance; }
+  .lede { color: var(--ink-soft); max-width: 68ch; margin: 11px 0 0; }
+  h3 { font-size: 18.5px; font-weight: 600; margin: 28px 0 8px; letter-spacing: -.01em; }
+  p { margin: 0 0 13px; max-width: 72ch; }
+  ul, ol { max-width: 72ch; padding-left: 22px; margin: 0 0 13px; }
+  li { margin-bottom: 6px; }
+  strong { font-family: 'Outfit', sans-serif; font-weight: 600; }
+
+  code { font-size: .92em; background: var(--surface-2); border: 1px solid var(--line);
+         border-radius: 3px; padding: 1px 5px; }
+  pre { font-size: 13px; line-height: 1.55; background: var(--surface); border: 1px solid var(--line);
+        border-left: 3px solid var(--accent); border-radius: 3px; padding: 15px 17px;
+        overflow-x: auto; margin: 14px 0; }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  pre .c { color: var(--ink-faint); }
+
+  .note { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+          border-radius: 0 4px 4px 0; padding: 17px 20px; margin: 16px 0; box-shadow: var(--shadow); }
+  .note p:last-child { margin-bottom: 0; }
+  .note.hard { border-left-color: var(--warn); background: var(--warn-soft); box-shadow: none; }
+  .note .tag { font-family: 'Outfit', sans-serif; font-size: 10.5px; font-weight: 600;
+               letter-spacing: .1em; text-transform: uppercase; color: var(--accent);
+               display: block; margin-bottom: 6px; }
+  .note.hard .tag { color: var(--warn); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px;
+               background: var(--surface); box-shadow: var(--shadow); margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 540px; font-size: 14.5px; }
+  th { text-align: left; font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 600;
+       letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint);
+       padding: 11px 15px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  td { padding: 12px 15px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.k { font-family: 'Inconsolata', monospace; font-weight: 600; white-space: nowrap; }
+  td.num { font-family: 'Inconsolata', monospace; white-space: nowrap; }
+  .bad { color: var(--warn); font-weight: 600; }
+
+  figure { margin: 20px 0; background: var(--surface); border: 1px solid var(--line);
+           border-radius: 4px; padding: 22px 24px 16px; box-shadow: var(--shadow); }
+  svg { display: block; width: 100%; height: auto; max-width: 100%; }
+  figcaption { font-size: 14px; color: var(--ink-soft); margin-top: 14px; padding-top: 13px;
+               border-top: 1px solid var(--line); }
+  .funnel { fill: var(--accent); opacity: .22; }
+  .funnel-edge { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .divider { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+  .cnt { fill: var(--ink); font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 800; }
+  .cntlbl { fill: var(--ink-faint); font-family: 'Inconsolata', monospace; font-size: 10.5px; }
+  .stg { fill: var(--accent); font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 600; }
+
+  footer { border-top: 1px solid var(--line-strong); padding-top: 22px; font-size: 13.5px;
+           color: var(--ink-faint); font-family: 'Outfit', sans-serif; }
+  footer p { max-width: 74ch; }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="kicker">SPINE §11 · addendum to the canonical design</div>
+  <h1>Tiered Horizons and the Signal Architecture</h1>
+  <p class="standfirst">Three horizons, three models, one shared discipline: an input is worth what its <em>independent</em> sourcing is worth, never what its volume suggests. Plus an audit of what already exists and can be taken off the shelf.</p>
+  <div class="disclaimer"><b>Revised 2026-09-19 after Phase 0 — two corrections reverse earlier claims in this document.</b> §11.0.1 (new): <code>n_eff</code> is non-monotonic in weekly basket size, so the "15 markets/week" figure was assumed, not derived, and is actively harmful on a realistic cluster structure. §11.10: the PolyBench recommendation is <b>retracted</b> — it was made from search snippets, and reading the repository disproves it. Every other third-party project named in §11.10 is still described from public documentation only, with licenses, maintenance activity and API behaviour <b>unverified</b>; <code>py_clob_client</code> is the sole exception, its name confirmed in Phase 0(d).</div>
+</header>
+
+<section>
+  <header>
+    <div class="secnum">§11.0</div><h2>What the tiering changes</h2>
+    <p class="lede">The revised scope bets where it can measure and only publishes where it cannot. The important consequence isn't that split — it's the arithmetic underneath it.</p>
+  </header>
+
+  <div class="tablewrap"><table>
+    <thead><tr><th>Tier</th><th>Horizon</th><th>Action</th><th>Layer / cap</th></tr></thead>
+    <tbody>
+      <tr><td class="k">T1</td><td class="num">7–14 days</td><td>Bet on Polymarket</td><td class="num">Layer 3 · 0.60</td></tr>
+      <tr><td class="k">T2</td><td class="num">1–6 months</td><td>Bet on Polymarket</td><td class="num">Layer 3→2 · 0.60–0.70</td></tr>
+      <tr><td class="k">T3</td><td class="num">6 mo – 2 yr</td><td>Forecast only, published</td><td class="num">Layer 2→1 · 0.70–0.85</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>§2 established <code>n_eff ≳ 24.7 / BSS</code>, which put Phase 3 at 18–48 months because long-dated forecasts resolve slowly. <strong>T1 changes the accumulation rate.</strong></p>
+<pre><code>15 resolved markets/week, mean pairwise correlation r̄ = 0.10
+n_eff per week = 15 / (1 + 14 × 0.10) = 15 / 2.4 ≈ 6.3
+n_eff = 250  →  ~40 weeks</code></pre>
+  <p>Under a year to a defensible calibration result instead of four. But that number is entirely hostage to <code>r̄</code>:</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Mean correlation</th><th>n_eff / week</th><th>Time to n_eff = 250</th></tr></thead>
+    <tbody>
+      <tr><td class="num">r̄ = 0.10</td><td class="num">6.3</td><td class="num">~10 months</td></tr>
+      <tr><td class="num">r̄ = 0.30</td><td class="num">2.9</td><td class="num">~21 months</td></tr>
+      <tr><td class="num">r̄ = 0.60</td><td class="num">1.7</td><td class="num bad">~3 years</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note">
+    <span class="tag">Design consequence</span>
+    <p><strong>Market selection must actively maximise independence.</strong> Diversity across domain, geography and causal mechanism becomes a hard selection criterion, not a nicety. Fifteen markets about one election are one observation. Fifteen spanning a court ruling, a central bank decision, a sports outcome, a crypto threshold, a legislative vote and a weather event are close to fifteen.</p>
+  </div>
+
+  <h3>11.0.1 Correction — <code>n_eff</code> is non-monotonic in basket size</h3>
+  <div class="note hard">
+    <span class="tag">Added after Phase 0(a) — reverses the figure above</span>
+    <p><code>r̄</code> is not a property of the venue that you discover and then live with. It is a property of the basket <strong>you choose</strong>, and it rises the moment you take more than one market per correlation cluster. Past <code>k</code> = the number of independent clusters available, <code>r̄</code> grows faster than <code>k</code> does — so evidence per week <em>falls</em> while workload climbs.</p>
+  </div>
+  <p>Measured by <code>phase0/screen_markets.py</code> on a 20-market / 8-cluster fixture:</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>weekly basket</th><th>r̄</th><th>n_eff / week</th><th>weeks to n_eff = 247</th></tr></thead>
+    <tbody>
+      <tr><td class="num">5</td><td class="num">0.050</td><td class="num">4.17</td><td class="num">59</td></tr>
+      <tr><td class="num"><strong>8</strong></td><td class="num"><strong>0.050</strong></td><td class="num"><strong>5.93</strong></td><td class="num"><strong>42</strong> ← optimum</td></tr>
+      <tr><td class="num">10</td><td class="num">0.083</td><td class="num">5.71</td><td class="num">43</td></tr>
+      <tr><td class="num">15</td><td class="num">0.207</td><td class="num">3.85</td><td class="num">64</td></tr>
+      <tr><td class="num">20</td><td class="num">0.315</td><td class="num">2.87</td><td class="num bad">86</td></tr>
+    </tbody>
+  </table></div>
+  <p>Twenty markets a week is <strong>2.5× the work of eight for half the evidence</strong>, and doubles the time to a verdict. Three consequences:</p>
+  <ol>
+    <li><strong>The weekly basket size is not a free parameter.</strong> It should equal the number of independent clusters the screen finds, and no more. Taking a round number like 15 because it sounds productive is a way to spend months buying correlated duplicates.</li>
+    <li><strong>Volume within a domain is worthless.</strong> The lever that shortens Register A is <em>cluster count</em> — more regions, more mechanisms, more question types. Trading more markets about the same handful of theses accumulates work, not evidence.</li>
+    <li><strong><code>r̄ ≤ 0.1</code> is achievable by construction</strong>, not by luck: take one market per cluster and observed <code>r̄</code> stays at the cross-cluster floor. So the binding question is not "how correlated is Polymarket" but "how many distinct clusters does it offer per week."</li>
+  </ol>
+
+  <h3>11.0.2 The honest cost of tiering</h3>
+  <p>Three tiers means <strong>three models, not one model at three horizons</strong>. T1 — will X happen in ten days — does not use Stage 2 pressure vectors; five-year debt trajectories say nothing about a court ruling next Thursday. T1 runs on event-proximate signal: scheduled calendars, news flow, short-event base rates, market microstructure.</p>
+  <div class="note hard">
+    <span class="tag">Must not be forgotten</span>
+    <p><strong>Calibration earned in T1 does not transfer to T3.</strong> Passing Register A on 250 short-horizon markets demonstrates the T1 model is calibrated. It says nothing about whether the structural method works, because the structural method was not used.</p>
+    <p>Publishing a T3 forecast alongside a T1 track record invites exactly the inference SPINE exists to prevent — spending Layer 3 credibility on Layer 1 claims. Every published T3 forecast carries the disclosure that its horizon class has no resolved track record.</p>
+  </div>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§11.1</div><h2>Signal count is not signal evidence</h2>
+    <p class="lede">The de-duplication problem and the <code>n_eff</code> problem are the same problem at opposite ends of the pipeline.</p>
+  </header>
+  <p>Stage 4 exists because twenty forecasts downstream of one thesis are not twenty pieces of evidence. The identical distortion applies to inputs: fifty articles about one event are not fifty signals, and five outlets running the same wire copy are not five sources. So the signal layer reuses the machinery already specified rather than inventing a parallel one:</p>
+<pre><code>n_eff_sources(cluster) = n / (1 + (n − 1) · r̄_source)      <span class="c">-- Kish, again</span></code></pre>
+  <p>One story carried by AP and forty syndicating outlets yields <code>n_eff_sources ≈ 1</code>. The same story independently reported by Reuters, a local outlet with its own correspondent, and a primary filing yields ≈ 3. Everything downstream weights on <code>n_eff_sources</code>, never on article count.</p>
+
+  <figure>
+    <svg viewBox="0 0 640 215" role="img" aria-label="Funnel showing one thousand raw items collapsing to three hundred forty after deduplication, forty five event clusters, and twelve effective independent sources">
+      <path class="funnel" d="M70,20 L210,30.2 L350,49.2 L490,61.6 L600,61.6 L600,108.4 L490,108.4 L350,120.8 L210,139.8 L70,150 Z"/>
+      <path class="funnel-edge" d="M70,20 L210,30.2 L350,49.2 L490,61.6 L600,61.6"/>
+      <path class="funnel-edge" d="M70,150 L210,139.8 L350,120.8 L490,108.4 L600,108.4"/>
+      <g class="divider">
+        <line x1="210" y1="26" x2="210" y2="144"/>
+        <line x1="350" y1="45" x2="350" y2="125"/>
+        <line x1="490" y1="57" x2="490" y2="113"/>
+      </g>
+      <g text-anchor="middle">
+        <text class="cnt" x="140" y="90">1,000</text>
+        <text class="cntlbl" x="140" y="104">raw items</text>
+        <text class="cnt" x="280" y="90">340</text>
+        <text class="cntlbl" x="280" y="104">unique texts</text>
+        <text class="cnt" x="420" y="90">45</text>
+        <text class="cntlbl" x="420" y="104">events</text>
+        <text class="cnt" x="545" y="90">12</text>
+        <text class="cntlbl" x="545" y="104">eff. sources</text>
+      </g>
+      <g class="stg" text-anchor="middle">
+        <text x="140" y="172">S0–S1 ingest</text>
+        <text x="280" y="172">S2–S3 dedup</text>
+        <text x="420" y="172">S4 cluster</text>
+        <text x="545" y="172">S5–S6 independence</text>
+      </g>
+      <text class="cntlbl" x="335" y="200" text-anchor="middle">illustrative proportions — the collapse ratio is the point, not the figures</text>
+    </svg>
+    <figcaption>A naive pipeline treats the left-hand number as its evidence count and is wrong by nearly two orders of magnitude. Only the right-hand number enters a likelihood update.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§11.2</div><h2>Sources by tier</h2>
+    <p class="lede">At T1 the dominant signal is <em>scheduled</em>, not discovered. Most short-horizon resolvable events are on a calendar somebody publishes.</p>
+  </header>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Tier</th><th>Class</th><th>Examples · why it matters</th></tr></thead>
+    <tbody>
+      <tr><td class="k">T1</td><td>Event calendars</td><td>Court dates, central bank meetings, earnings, elections, scheduled votes, fixtures — removes timing uncertainty entirely; only outcome remains</td></tr>
+      <tr><td class="k">T1</td><td>Official feeds</td><td>Court dockets, regulatory filings, agency press offices, legislature order papers — primary sources, near-zero noise, often the market's own resolution source</td></tr>
+      <tr><td class="k">T1</td><td>News flow</td><td>Wires and beat reporting — fast, noisy, must go through the full §11.3 pipeline</td></tr>
+      <tr><td class="k">T1</td><td>Microstructure</td><td>Order book, correlated markets on other venues — powerful and dangerous, see §11.5.2</td></tr>
+      <tr><td class="k">T1</td><td>Short-horizon base rates</td><td>"Given a scheduled X, how often does Y follow within 10 days" — the T1 equivalent of Stage 1, often the single best predictor</td></tr>
+      <tr><td class="k">T2</td><td>Polls, releases, pipelines</td><td>Poll aggregates with house effects; scheduled economic prints where <em>surprise vs consensus</em> is the signal; bill progress and rule-making stages; central bank guidance; shipping, satellite and commodity flows; ACLED/UCDP conflict incidents</td></tr>
+      <tr><td class="k">T3</td><td>Structural</td><td>Unchanged from §5.3 — vintage macro, debt, demography, energy balance, industrial capacity, alliance dependency. 5- and 10-year windows. Never trades.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§11.3</div><h2>The pipeline</h2>
+    <p class="lede">Ten stages. Each emits provenance; nothing is discarded silently, because "we filtered it" must be auditable afterwards.</p>
+  </header>
+<pre><code>S0  Ingest          raw item + source + first_seen_at (immutable)
+S1  Canonicalise    boilerplate strip, text normalise, content_hash
+S2  Exact dedup     content_hash collision → drop, record pointer
+S3  Near-dup        MinHash/LSH → near-duplicate groups
+S4  Event cluster   embeddings + density clustering → event_cluster_id
+S5  Syndication     collapse wire copies and same-owner outlets to originator
+S6  Independence    compute n_eff_sources(cluster) from co-publication history
+S7  Claim extract   structured claim + primary-source binding attempt
+S8  Verify          corroboration (independence-weighted), entailment, contradiction
+S9  Emit            signal record → point-in-time feature store</code></pre>
+  <div class="note hard">
+    <span class="tag">The stage that cannot be got wrong</span>
+    <p><code>first_seen_at</code> is the moment <em>we</em> first observed the item. Stamped once, never revised, never backfilled. Publication timestamps from sources are recorded separately and treated as <em>claims, not facts</em> — outlets silently re-date articles. Every downstream point-in-time query keys on <code>first_seen_at</code>.</p>
+  </div>
+</section>
+
+<section>
+  <header><div class="secnum">§11.4</div><h2>Deduplication and source independence</h2></header>
+  <h3>Three layers, three techniques</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Layer</th><th>What it catches</th><th>Technique</th></tr></thead>
+    <tbody>
+      <tr><td>Byte-identical</td><td>Re-crawls, feed repeats</td><td>SHA-256 content hash</td></tr>
+      <tr><td>Near-duplicate</td><td>Wire copy with edited headline, truncation, boilerplate drift</td><td>MinHash + LSH over shingles, Jaccard ≈ 0.8</td></tr>
+      <tr><td>Semantic / same-event</td><td>Independent reporting of one underlying event</td><td>Sentence embeddings + density clustering</td></tr>
+    </tbody>
+  </table></div>
+  <p>These must be separate passes. MinHash will not catch two genuinely different articles about one event; embedding clustering is too expensive and too fuzzy to be the first line against literal re-crawls.</p>
+
+  <h3>Event clustering — two required adaptations</h3>
+  <p>Documented practice for continuous news streams is embeddings → UMAP → HDBSCAN. Two changes are needed here:</p>
+  <ol>
+    <li><strong>Streaming, not batch.</strong> Clusters accept new members continuously without re-clustering history — re-clustering would retroactively change past feature values and destroy point-in-time correctness. Periodic offline re-fit writes a <em>new cluster version</em> rather than mutating the old one.</li>
+    <li><strong>Time-boxed.</strong> Two events months apart can be textually near-identical ("Fed holds rates"). Membership requires temporal proximity as well as semantic similarity.</li>
+  </ol>
+
+  <h3>Estimating source correlation</h3>
+  <p><code>r̄_source</code> is learned, not assumed. Build a source × event-cluster incidence matrix over history; for each pair compute co-publication association (φ or Jaccard over clusters both covered, conditioned on cluster size so sources that cover everything aren't rewarded). Sources that nearly always co-occur within minutes are syndication partners — correlation near 1. Feed the pairwise matrix into Kish per cluster.</p>
+  <p>A useful by-product: a <strong>publication-lag profile</strong> per source. A source that consistently publishes an event first is a genuinely independent reporter; one that consistently publishes forty minutes later is a follower and is discounted accordingly.</p>
+
+  <h3>Syndication collapse</h3>
+  <p>Before independence weighting, explicitly collapse known wire originators and their carriers (detect via byline, dateline, meta attribution, and near-dup grouping to the earliest member); same-owner outlet families, since a media group running one story across twelve mastheads is one source; and aggregators and republishers, which are never counted as sources. Ownership mapping is external data and has to be maintained.</p>
+</section>
+
+<section>
+  <header><div class="secnum">§11.5</div><h2>Noise removal</h2></header>
+  <h3>Volume is not information</h3>
+  <p>News volume about an entity spikes for reasons unrelated to any change in probability — anniversary coverage, media cascades, a slow news day, an unrelated story pulling the entity into frame. Raw mention counts are among the worst features available and are exactly what naive pipelines key on.</p>
+  <p>Normalise against a rolling baseline for that entity and topic, and use <strong>deviation from expected volume</strong>. Flag cascade patterns — rapid growth with <code>n_eff_sources</code> staying flat — as amplification rather than new information. That signature is precisely one story being repeated, and it should <em>reduce</em> confidence in a volume signal, not raise it.</p>
+
+  <div class="note hard">
+    <span class="tag">§11.5.2 · The reflexivity trap</span>
+    <p><strong>Filter news about the market itself.</strong> "Polymarket odds shift on X," "traders now price Y at 68%" — that is the market talking to itself. Ingesting it as evidence and then scoring against that same market creates a feedback loop that looks like signal in backtest and is nothing.</p>
+    <p>Maintain an explicit exclusion class for any item whose primary subject is a prediction-market price, betting odds, or forecast aggregate. Store it — useful for measuring attention — but never route it into the likelihood update. Prediction-market coverage is now common enough that this is a real contaminant, not a theoretical one.</p>
+  </div>
+
+  <div class="tablewrap"><table>
+    <thead><tr><th>Filter</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td>Opinion / analysis vs reportage</td><td>Commentary restates known facts; not new evidence</td></tr>
+      <tr><td>Speculation markers</td><td>"could", "may", "reportedly" — downweighted, not dropped</td></tr>
+      <tr><td>Recycled / anniversary content</td><td>High similarity to items &gt;30 days old with no new claim</td></tr>
+      <tr><td>Content farms</td><td>Low-quality reprints; source reliability prior handles most</td></tr>
+      <tr><td>Entity ambiguity</td><td>Wrong-"Jordan" errors; require linking confidence above threshold</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§11.6</div><h2>Verification</h2>
+    <p class="lede">Four checks, in increasing cost.</p>
+  </header>
+  <ol>
+    <li><strong>Primary-source binding.</strong> Resolve every claim to an official artifact where possible — a filing, a docket entry, an agency release. A bound claim needs no corroboration. An unbound claim is a report <em>about</em> a fact, not the fact.</li>
+    <li><strong>Independence-weighted corroboration.</strong> Confidence scales with <code>n_eff_sources</code>, never article count. A claim in forty syndicated copies of one wire story is a single-source claim.</li>
+    <li><strong>Entailment check.</strong> Does the extracted claim actually follow from the source text? Cheap NLI models catch extraction errors and headline/body mismatch, a large category.</li>
+    <li><strong>Contradiction check.</strong> Does this contradict something asserted earlier with comparable support? Contradictions queue for adjudication; both claims are held at reduced weight until resolved.</li>
+  </ol>
+  <div class="note">
+    <span class="tag">The rule that governs all four</span>
+    <p>For a market being traded, the only verification that ultimately matters is what the market's own resolution source says. A claim can be true, well-corroborated, and irrelevant because the oracle reads a different document. <strong>Signals inform the forecast; the market's resolution text defines the question.</strong></p>
+  </div>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§11.7</div><h2>Point-in-time discipline</h2>
+    <p class="lede">Where most backtests of news-driven systems quietly fail — the same failure mode as revised macro data in §5.3.</p>
+  </header>
+  <ol>
+    <li><code>first_seen_at</code> is immutable, set once at ingestion.</li>
+    <li>Feature values are never recomputed in place. A model change emits a <strong>new feature version</strong>; old values stay queryable as they were.</li>
+    <li>Every retrieval is a point-in-time join — "what was known as of T," never "what the current table says about T."</li>
+    <li>Cluster assignments are versioned. Re-clustering creates a new version; it never rewrites history.</li>
+    <li><strong>Source reliability priors are themselves point-in-time.</strong> A source's score in March 2026 must be the score computed from data available in March 2026, not today's score applied retroactively.</li>
+  </ol>
+  <p>Rule 5 is the subtle one and it is routinely violated. If source reliability is learned from outcomes, applying today's learned reliability to a 2024 backtest leaks outcome information backwards.</p>
+  <div class="note">
+    <span class="tag">Don't hand-roll this</span>
+    <p>Point-in-time correct feature retrieval is the defining primitive of a feature store. It is a solved problem in MLOps — see §11.10.</p>
+  </div>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§11.8</div><h2>From signals to a forecast</h2>
+    <p class="lede">Signals do not set probabilities. They update a prior, in log-odds, with bounded influence.</p>
+  </header>
+<pre><code>logit(p_t) = logit(p_0) + λ_sig · Σ_c  w_c · LLR_c
+
+w_c   = log(1 + n_eff_sources(c)) / log(1 + N_ref)     <span class="c">-- diminishing returns</span>
+LLR_c ∈ [−L_max, +L_max]                                <span class="c">-- per-cluster ceiling</span></code></pre>
+  <ul>
+    <li><strong>Corroboration has diminishing returns.</strong> The second independent source moves the estimate a lot; the tenth barely. The logarithm encodes that — and it is why <code>n_eff_sources</code> must be right.</li>
+    <li><strong>No single story can dominate.</strong> <code>L_max ≈ 1.5</code> caps one cluster at roughly a 4.5:1 likelihood ratio.</li>
+    <li><strong>Summation is over clusters, not articles.</strong> Volume cannot substitute for independence.</li>
+    <li><strong>The firewall still binds.</strong> After all updates the §4 CHECK clamps the result into the layer's symmetric band. No quantity of news promotes a T1 claim past 0.60 — the existing control doing its job on a new input path, which is why the signal layer needs no separate cap.</li>
+  </ul>
+  <p><code>λ_sig</code> is calibrated exactly as <code>λ</code> is in §5.3 — three splits, frozen, versioned on every forecast. It is a second free parameter and carries the same abuse risk.</p>
+</section>
+
+<section>
+  <header>
+    <div class="secnum">§11.10</div><h2>Open source landscape</h2>
+    <p class="lede">Existence and stated purpose only, from public documentation. Licenses, maintenance and API behaviour unverified.</p>
+  </header>
+
+  <h3>Adopt in full</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Project</th><th>Role</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Feast</td><td>Point-in-time feature store</td><td>Point-in-time joins are its core primitive — implements §11.7 rules 3–5 directly. Retrofitting vintage correctness later is far harder than starting with it.</td></tr>
+      <tr><td class="k">py_clob_client</td><td>Polymarket CLOB access</td><td><strong>Name verified</strong> in Phase 0(d) — it is the client PolyBench depends on. Official client (a v2 line is referenced); Gamma API and parts of CLOB need no auth for read-only market data. Version and license still unverified.</td></tr>
+      <tr><td class="k">datasketch / text-dedup</td><td>MinHash + LSH</td><td>Standard, cheap, well-understood. <code>text-dedup</code> packages MinHash/SimHash/suffix-array together.</td></tr>
+      <tr><td class="k">sentence-transformers<br>+ HDBSCAN</td><td>Event clustering</td><td>The documented BERTopic pattern for news story discovery. Needs the streaming and time-boxing adaptations in §11.4.</td></tr>
+      <tr><td class="k">FAISS / hnswlib / Qdrant</td><td>ANN index</td><td>Required for near-dup lookup at any real ingestion rate.</td></tr>
+      <tr><td class="k">fredapi + ALFRED</td><td>Vintage macro for T3</td><td>ALFRED is the vintage archive the §5.3 calibration depends on.</td></tr>
+      <tr><td class="k">properscoring / netcal</td><td>Brier, CRPS, calibration</td><td>Don't hand-write scoring for a project whose credibility <em>is</em> scoring.</td></tr>
+      <tr><td class="k">Dagster (or Prefect)</td><td>Orchestration</td><td>Asset-level lineage maps onto the audit requirements; either beats cron.</td></tr>
+      <tr><td class="k">Great Expectations / Pandera</td><td>Ingestion validation</td><td>Schema and distribution checks at the boundary, where §11 is most fragile.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Adopt as data or benchmark</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Project</th><th>Role</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="k">ForecastBench</td><td>External baseline</td><td>Dynamic benchmark, questions gathered daily from nine sources, LLM <em>and</em> human forecaster predictions, public leaderboard. The comparator that tells you whether your BSS is impressive or ordinary.</td></tr>
+      <tr><td class="k">GDELT</td><td>Narrative volume, source diversity</td><td>Free, global, ~15-minute cadence, source URLs and mention counts. Use for volume and diversity measurement — <em>not</em> as ground-truth events.</td></tr>
+      <tr><td class="k">ACLED / UCDP</td><td>Curated conflict events</td><td>High precision, human-curated. The appropriate ground truth where they have coverage; GDELT is not.</td></tr>
+      <tr><td class="k">MBFC / NewsGuard</td><td>Source reliability priors</td><td>~8,000 publishers rated. A <em>prior</em> your own learned reliability updates away from. NewsGuard is commercial.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Adopt the methodology, not the code</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Project</th><th>Take</th></tr></thead>
+    <tbody>
+      <tr><td class="k">OracleProto</td><td>Knowledge-cutoff and temporal-masking protocol for reproducible LLM forecasting evaluation. The discipline is what makes any retrospective LLM evaluation non-circular.</td></tr>
+      <tr><td class="k">Source-veracity-from-<br>sharing-behaviour research</td><td>Inferring source independence from content-sharing patterns is precisely §11.4.3. Read the method, implement against your own corpus.</td></tr>
+      <tr><td class="k">Prediction Arena, LEAF,<br>Foresight Arena</td><td>Additional comparators and evaluation designs worth reading before finalising the Register A protocol.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Do not adopt</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Project</th><th>Why not</th></tr></thead>
+    <tbody>
+      <tr><td class="k bad">PolyBench<br><span style="font-weight:400;font-size:.9em">(retracted)</span></td><td><strong>An earlier revision of this document called it "the highest-value find here" and recommended it as a backtest corpus, on the strength of search snippets. Reading the repository in Phase 0(d) contradicts that on four counts.</strong><br><br><strong>1. It contains no probabilities.</strong> <code>Prediction</code> stores <code>decision</code> (BUY/SELL/HOLD/SKIP), <code>side</code> and <code>confidence</code>; the string <code>probability</code> appears <em>zero</em> times in the schema. Brier and BSS cannot be computed from a trading action plus a conviction score without inventing the mapping.<br><br><strong>2. "Contamination-proof" means LLM knowledge-cutoff</strong>, not point-in-time correctness. The two were conflated.<br><br><strong>3. There is no price history.</strong> <code>Market</code> is a current-state row with <code>last_updated DEFAULT CURRENT_TIMESTAMP</code>, overwritten in place. Point-in-time state exists only as JSON blobs inside <code>Prediction</code> rows — you can ask what a given model saw, never what the book was at time T.<br><br><strong>4. News provenance is erased.</strong> <code>core/news_fetcher.py</code> queries Google News RSS per market and scrapes the results: an algorithmically ranked aggregate with no publisher independence metadata, which makes <code>n_eff_sources</code> (§11.4) uncomputable from it.<br><br>Its evaluation also filters to <code>confidence ≥ 0.6</code> and EV-positive predictions — right for measuring returns, fatal for measuring calibration. <strong>No LICENSE file</strong> (404): all rights reserved, and the dataset sits behind a personal OneDrive share rather than an archival host.<br><br><em>Residual value:</em> read <code>core/market_data.py</code> for Gamma/CLOB API patterns and its CLOB-snapshot-to-news alignment as prior art. Treat the published results as trading-agent evaluation, not forecasting calibration.</td></tr>
+      <tr><td class="k bad">Polymarket/agents</td><td>An autonomous-trading demo framework. Worth reading for API patterns, but its risk posture is the opposite of §6 — this design requires trading to be a rebuild, not a flag.</td></tr>
+      <tr><td class="k bad">GDELT CAMEO codes<br>as direct features</td><td>Machine-coded from news with documented false positives and duplicate coding of single events. Feeding them in raw injects exactly the duplication problem §11.4 exists to solve. The 2026 GDELT-vs-POLECAT comparison against ACLED as white-box benchmark is the relevant prior reading.</td></tr>
+      <tr><td class="k bad">Generic news-sentiment APIs</td><td>Sentiment is a weak, heavily-processed proxy that discards provenance — the one thing this architecture depends on.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <header><div class="secnum">§11.11</div><h2>Roadmap deltas</h2></header>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Phase</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td class="k">0</td><td>Two new audits. <strong>(a) Market-independence survey</strong> — <em>how many independent clusters</em> does the T1 universe offer per week? Per §11.0.1 this, not market count, sets the Phase 3 timeline; the screen sweeps basket size and reports the optimum. <strong>(b) PolyBench replication</strong> — <span class="bad">DONE, failed</span>; see the retraction in §11.10. No replacement corpus identified, so Register A rests entirely on forward-looking pre-registered forecasts — as §2.5 always required.</td></tr>
+      <tr><td class="k">1</td><td>Signal pipeline S0–S6 built alongside the forecast stages. Feast integration is Phase 1 work, not a later optimisation.</td></tr>
+      <tr><td class="k">2</td><td>Add <code>λ_sig</code> calibration on the same three-split protocol as <code>λ</code>. Two free parameters now, two freeze points.</td></tr>
+      <tr><td class="k">3</td><td>Revised to <strong>10–18 months</strong>, replacing 18–48 — but the driver is <em>cluster count per week</em>, not market count (§11.0.1). One market per independent cluster holds <code>r̄</code> at the cross-cluster floor; taking more is net-negative. Entirely dependent on the Phase 0(a) sweep.</td></tr>
+      <tr><td class="k">5</td><td>Paper trading becomes T1/T2-specific and gains an execution-realism requirement — short-horizon markets are where slippage is most likely to consume a modest edge.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <header><div class="secnum">§11.12</div><h2>Risks specific to the signal layer</h2></header>
+  <ol>
+    <li><strong><code>r̄</code> between markets is the whole timeline.</strong> If the T1 universe is dominated by correlated political questions, <code>n_eff</code> accumulates slowly and Phase 3 stretches back toward years. Measure before committing.</li>
+    <li><strong>Reflexivity contamination</strong> will look like signal in backtest. If prediction-market commentary leaks into the likelihood update, the system learns to read its own reflection and the error is invisible until live trading.</li>
+    <li><strong>Retroactive source scores</strong> leak outcomes backwards. Subtle, easy to implement by accident, fatal to any backtest result.</li>
+    <li><strong>Two calibrated free parameters</strong> double the surface for tuning-until-it-looks-right. Both need frozen splits and committed configs.</li>
+    <li><strong>Ingestion cost and rate limits.</strong> Continuous multi-source news ingestion at useful latency is an ongoing operational cost, not a one-off build.</li>
+    <li><strong>Legal and terms-of-service constraints on scraping.</strong> Unexamined here. Must be checked before any crawler runs.</li>
+  </ol>
+</section>
+
+<footer>
+  <p>Schema additions for <code>signal_items</code>, <code>event_clusters</code>, <code>cluster_members</code>, <code>source_correlation</code> and <code>signals</code> are in §11.9 of the Markdown companion. Note there is no UPDATE path for <code>signals</code> — re-evaluation emits a new row with a new <code>feature_version</code>, exactly as <code>forecast_neff_history</code> does for <code>n_eff</code>.</p>
+  <p>Borrowed: the Kish design effect (reused here on sources rather than forecasts), MinHash/LSH, the BERTopic clustering pattern, and point-in-time joins from feature-store practice. The tier split, the independence-weighted likelihood update, and the reflexivity exclusion class are this design's own.</p>
+</footer>
+
+</div>
