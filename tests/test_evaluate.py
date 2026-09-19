@@ -139,13 +139,22 @@ def main() -> int:
     con.commit()
 
     run1 = evaluate.score_all(con, as_of=at(days=40))
-    ok("a resolution arriving later does NOT rewrite the existing exclusions",
-       run1.scored == 0 and run1.already_scored == 120, run1.summary())
-    ok("...so the record still shows 120 unscorable rows",
+    ok("a resolution arriving later scores the forecast at the new revision",
+       run1.scored == 120, run1.summary())
+    ok("...without rewriting the earlier exclusion, which stays on the record",
        con.execute("SELECT COUNT(*) FROM scores WHERE scorable=0").fetchone()[0]
        == 120)
-    print(f"        a score that silently changed would undo the chain: "
-          f"{run1.summary()}")
+    ok("so each forecast now carries two score rows, revision 0 and revision 1",
+       con.execute("SELECT COUNT(*) FROM scores").fetchone()[0] == 240)
+    ok("and the current score is the one against the live resolution",
+       con.execute("SELECT COUNT(*) FROM current_scores WHERE scorable=1")
+       .fetchone()[0] == 120)
+    ok("scores are append-only",
+       raises(lambda: con.execute("UPDATE scores SET brier=0.0 WHERE id=1"),
+              sqlite3.IntegrityError))
+    print(f"        {run1.summary()}")
+    print("        a forecast excluded as unresolved is rescored once the "
+          "outcome lands, rather than staying excluded forever")
 
     print("\n[2] Labels gate scoring the way availability gates retrieval\n")
     con2 = ledger.connect(":memory:", create=True)
@@ -289,6 +298,67 @@ def main() -> int:
        raises(lambda: evaluate.record_settlement(con3, cid3, "settled", 1.5),
               sqlite3.IntegrityError))
     print(f"        divergence: {div[0] if div else 'none'}")
+
+    print("\n[5b] A corrected outcome is a revision, not a replacement\n")
+    pid_r = made3[1][0]
+    con3.execute("DELETE FROM scores WHERE forecast_id IN "
+                 "(SELECT id FROM forecasts WHERE proposition_id=?)", (pid_r,))
+    con3.commit()
+    hist0 = evaluate.resolution_history(con3, pid_r)
+    ok("the first resolution is revision 1", hist0[0]["revision"] == 1)
+    ok("recording a second first-resolution is refused",
+       raises(lambda: evaluate.record_resolution(con3, pid_r, "resolved_no", "x"),
+              EvaluationError))
+    ok("a revision with no adjudicator is refused",
+       raises(lambda: evaluate.revise_resolution(
+           con3, pid_r, "resolved_no", adjudication="changed my mind",
+           adjudicator=""), EvaluationError))
+    rid = evaluate.revise_resolution(
+        con3, pid_r, "resolved_no",
+        adjudication="UMA dispute upheld; the recorded vote was procedural",
+        adjudicator="analyst-2", recorded_at=at(days=45))
+    ok("a revision records", rid > 0)
+    hist = evaluate.resolution_history(con3, pid_r)
+    ok("both revisions are on the record", len(hist) == 2, hist)
+    ok("the original outcome is still readable at revision 1",
+       hist[0]["outcome"] == hist0[0]["outcome"] and hist[1]["outcome"] == "resolved_no",
+       (hist[0]["outcome"], hist[1]["outcome"]))
+    ok("the revision carries its reason and adjudicator",
+       hist[1]["adjudicator"] == "analyst-2" and hist[1]["adjudication"])
+    ok("the current view shows only the newest",
+       con3.execute("SELECT outcome FROM current_resolutions WHERE proposition_id=?",
+                    (pid_r,)).fetchone()[0] == "resolved_no")
+    ok("resolutions are append-only",
+       raises(lambda: con3.execute(
+           "UPDATE resolutions SET outcome='void' WHERE proposition_id=?", (pid_r,)),
+           sqlite3.IntegrityError))
+    ok("a resolution is never deleted",
+       raises(lambda: con3.execute(
+           "DELETE FROM resolutions WHERE proposition_id=?", (pid_r,)),
+           sqlite3.IntegrityError))
+    ok("revising a proposition that was never resolved is refused",
+       raises(lambda: evaluate.revise_resolution(
+           con3, 99999, "resolved_no", adjudication="x", adjudicator="y"),
+           EvaluationError))
+
+    # Scores against the superseded revision are reported, not silently redone.
+    evaluate.score_all(con3, as_of=at(days=46))
+    evaluate.revise_resolution(
+        con3, made3[2][0], "void",
+        adjudication="the question was unresolvable as written",
+        adjudicator="analyst-2", recorded_at=at(days=47))
+    stale = evaluate.stale_scores(con3)
+    ok("a forecast scored against a superseded revision is reported as stale",
+       len(stale) == 1 and stale[0]["proposition_id"] == made3[2][0], stale)
+    ok("...and says which revision it was scored against",
+       stale[0]["scored_against"] < stale[0]["current_revision"])
+    evaluate.score_all(con3, as_of=at(days=48))
+    ok("rescoring clears it", evaluate.stale_scores(con3) == [])
+    ok("...by adding a row, not by changing one",
+       con3.execute("SELECT COUNT(*) FROM scores WHERE forecast_id=("
+                    "SELECT id FROM forecasts WHERE proposition_id=? LIMIT 1)",
+                    (made3[2][0],)).fetchone()[0] == 2)
+    print(f"        {evaluate.resolution_history(con3, pid_r)[1]['adjudication']}")
 
     print("\n[6] Score correlation is not loss correlation\n")
     hashes = [h for _, h, _ in made3[:4]]

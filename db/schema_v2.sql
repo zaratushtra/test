@@ -33,7 +33,7 @@ PRAGMA busy_timeout = 5000;
 -- which is how a query silently returns nothing and the absence gets read as
 -- evidence. Bump this whenever this file changes in a way that is not purely
 -- additive; ledger.SCHEMA_VERSION must match.
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;
 
 -- ============================================================================
 -- CANONICAL TIMESTAMPS
@@ -463,16 +463,39 @@ CREATE TABLE trade_decisions (
 -- 8. OUTCOMES — research outcome and economic settlement kept separate
 -- ============================================================================
 
+-- Resolutions are REVISED, never replaced. A disputed outcome that is later
+-- adjudicated is a new revision with a reason and a named adjudicator; the
+-- original row stays. The previous UNIQUE(proposition_id) forced a correction
+-- to be a DELETE, which would have erased the fact that the outcome was ever in
+-- doubt -- exactly what section 7.3 forbids for claims, applied one table over.
 CREATE TABLE resolutions (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     proposition_id     INTEGER NOT NULL REFERENCES propositions(id),
+    revision           INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
     outcome            TEXT NOT NULL CHECK (outcome IN
                          ('resolved_yes','resolved_no','void','disputed','unresolvable')),
     resolution_source  TEXT NOT NULL,
     resolved_at        TEXT,
-    recorded_at        TEXT NOT NULL,
-    UNIQUE (proposition_id)
+    recorded_at            TEXT NOT NULL CHECK (recorded_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    -- Present from revision 2 onward: a correction must say why, and who.
+    adjudication       TEXT,
+    adjudicator        TEXT,
+    UNIQUE (proposition_id, revision),
+    CHECK (revision = 1 OR (adjudication IS NOT NULL AND adjudicator IS NOT NULL))
 ) STRICT;
+
+CREATE TRIGGER resolutions_append_only BEFORE UPDATE ON resolutions
+BEGIN SELECT RAISE(ABORT, 'resolutions are append-only; record a new revision'); END;
+
+CREATE TRIGGER resolutions_no_delete BEFORE DELETE ON resolutions
+BEGIN SELECT RAISE(ABORT, 'a resolution is never deleted; supersede it'); END;
+
+-- The outcome as it currently stands. Everything that scores or evaluates reads
+-- this, so a revision propagates without any query having to remember to.
+CREATE VIEW current_resolutions AS
+SELECT r.* FROM resolutions r
+WHERE r.revision = (SELECT MAX(r2.revision) FROM resolutions r2
+                    WHERE r2.proposition_id = r.proposition_id);
 
 CREATE TABLE settlements (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -486,16 +509,31 @@ CREATE TABLE settlements (
     UNIQUE (contract_id)
 ) STRICT;
 
+-- A score records WHICH revision of the outcome it was computed against, so a
+-- later adjudication produces a new score row rather than silently invalidating
+-- an old one. Append-only, like everything else that constitutes the record: a
+-- score that moved would undo the hash chain one table lower down.
 CREATE TABLE scores (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    forecast_id        INTEGER NOT NULL UNIQUE REFERENCES forecasts(id),
+    forecast_id        INTEGER NOT NULL REFERENCES forecasts(id),
+    resolution_revision INTEGER NOT NULL DEFAULT 0 CHECK (resolution_revision >= 0),
     brier              REAL,             -- NULL when the outcome is not scorable
     scorable           INTEGER NOT NULL CHECK (scorable IN (0,1)),
     exclusion_reason   TEXT,
     computed_at            TEXT NOT NULL CHECK (computed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    UNIQUE (forecast_id, resolution_revision),
     CHECK ((scorable = 1) = (brier IS NOT NULL)),
     CHECK (scorable = 1 OR exclusion_reason IS NOT NULL)
 ) STRICT;
+
+CREATE TRIGGER scores_append_only BEFORE UPDATE ON scores
+BEGIN SELECT RAISE(ABORT, 'scores are append-only; score against a new resolution revision'); END;
+
+-- The score that currently stands for each forecast.
+CREATE VIEW current_scores AS
+SELECT s.* FROM scores s
+WHERE s.resolution_revision = (SELECT MAX(s2.resolution_revision) FROM scores s2
+                               WHERE s2.forecast_id = s.forecast_id);
 
 -- ============================================================================
 -- 9. SHADOW EXECUTION

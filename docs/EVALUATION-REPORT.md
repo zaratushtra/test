@@ -1,7 +1,7 @@
 # Evaluation Report — closing the loop, and a timestamp bug
 
 **Date:** 19 Sep 2026
-**Status:** **Built and validated.** `spine/evaluate.py` and `spine/timeutil.py`; 43/43 in
+**Status:** **Built and validated.** `spine/evaluate.py` and `spine/timeutil.py`; 61/61 in
 `tests/test_evaluate.py`, 33/33 in `tests/test_timeutil.py`, plus 5 checks in the end-to-end run.
 **What it closes:** three tables the project defined and never populated — `scores`, `settlements`,
 `forecast_edges` — plus the step nobody had written: building observations *from the database*
@@ -120,24 +120,47 @@ Tested directly: the same pair may cycle in the `loss` graph while being refused
 
 ---
 
-## 5. What this does not establish
+## 5. Corrections are revisions — and fixing that fixed a latent bug
 
-- **Every number here is from fixtures.** The evaluation machinery is validated; nothing has been
-  evaluated.
-- **`scores` has no append-only trigger**, unlike `forecasts` and `claims`. Re-scoring is prevented
-  in code rather than in the schema — weaker than the guarantees elsewhere, and worth tightening
-  before real scores exist.
-- **A corrected resolution has no path.** `resolutions` is `UNIQUE(proposition_id)`, so a disputed
-  outcome later adjudicated cannot be recorded without deleting a row. That is a real gap: the
-  design wants adjudication to be recorded, not applied by replacement.
-- **The seventeen `GLOB` checks cover the columns compared today.** A new comparison on an
-  unconstrained column would reintroduce the same class of bug, which is an argument for adding the
-  check when adding the column.
+The first version of this report listed two gaps. Both are now closed, and closing them surfaced a
+third problem that neither had described.
+
+**`resolutions` was `UNIQUE(proposition_id)`**, so a disputed outcome later adjudicated could only
+be recorded by deleting the original — erasing the fact that the outcome was ever in doubt. That is
+exactly what §7.3 forbids for claims, and there is no reason the rule should weaken one table over.
+Resolutions are now revisions: `revise_resolution()` appends, requires a written reason *and* a
+named adjudicator, and the schema refuses a revision without both. The table is append-only and
+undeletable by trigger, and a `current_resolutions` view carries the live outcome so no query has to
+remember to pick the newest.
+
+**`scores` now records which revision it scored against**, and is append-only by trigger. A
+correction therefore produces a *new* score row; the old one is not invalidated, because it was
+correct against the revision it names. `stale_scores()` lists forecasts whose newest score predates
+the newest resolution — reported rather than recomputed on read, since the number of forecasts a
+correction disturbed is itself worth seeing.
+
+**The latent bug:** scoring previously skipped any forecast that already had a score row. A forecast
+scored while `unresolved` therefore stayed excluded **forever**, even once its outcome landed. It
+took keying scores by resolution revision to see it — revision 0 means "no resolution yet", so the
+arrival of a real outcome is now a revision change and triggers a score. Nothing in the old tests
+caught this, because the old test *asserted the buggy behaviour* as if it were a discipline.
 
 ---
 
-## 6. Next
+## 6. What this does not establish
 
-1. **An append-only trigger on `scores`**, matching `forecasts` and `claims`.
-2. **A resolution-correction path** that records an adjudication rather than replacing a row.
-3. **Real forecasts to score**, which needs the event-family decision and live data.
+- **Every number here is from fixtures.** The evaluation machinery is validated; nothing has been
+  evaluated.
+- **The seventeen `GLOB` checks cover the columns compared today.** A new comparison on an
+  unconstrained column would reintroduce the same class of bug, which is an argument for adding the
+  check at the same time as the column.
+- **`stale_scores()` is advisory.** Nothing forces a rescore before the next evaluation, so a
+  revision left unscored silently keeps the old observation in the record. A gate on `evaluate()`
+  would be stricter.
+
+---
+
+## 7. Next
+
+1. **Gate `evaluate()` on an empty `stale_scores()`**, so a correction cannot be evaluated around.
+2. **Real forecasts to score**, which needs the event-family decision and live data.

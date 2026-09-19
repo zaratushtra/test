@@ -12,7 +12,7 @@ has been demonstrated.
 
 **Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline** and **§10.2–§10.3 shadow execution** built (`docs/EVIDENCE-REPORT.md`, `docs/SHADOW-EXECUTION-REPORT.md`) — every
 layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
-not code. 542 checks across 11 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
+not code. 561 checks across 11 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -397,6 +397,12 @@ an explicit `basis` field recording how each was derived, including `assumed`.
 Automatically downweighting on contradiction lets an unsupported denial dilute strong evidence —
 an attack surface. Preserve both claims, distinguish changed circumstances from genuine
 contradiction, and adjudicate support asymmetrically with the decision logged.
+
+**The same rule applies to outcomes, and originally did not.** `resolutions` was keyed
+`UNIQUE(proposition_id)`, so correcting a disputed outcome meant deleting the original and erasing
+the fact that it was ever in doubt. Resolutions are now **revisions**: append-only, undeletable,
+each correction carrying a written reason and a named adjudicator. Scores record which revision they
+were computed against, so a correction adds a score rather than invalidating one.
 
 ---
 

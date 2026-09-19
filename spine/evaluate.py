@@ -106,19 +106,24 @@ def score_all(con: sqlite3.Connection, as_of: str | None = None) -> ScoringRun:
     history would undo it one table lower down.
     """
     ts = timeutil.canonical(as_of) if as_of else _now()
+    # Revision 0 means "no resolution yet", so an unresolved forecast scored now
+    # and resolved later is rescored at revision 1 rather than left behind.
     rows = con.execute(
-        """SELECT f.id, f.p_est_bp, f.label_available_at, r.outcome
+        """SELECT f.id, f.p_est_bp, f.label_available_at, r.outcome,
+                  COALESCE(r.revision, 0) AS rev
            FROM forecasts f
-           LEFT JOIN resolutions r ON r.proposition_id = f.proposition_id
+           LEFT JOIN current_resolutions r ON r.proposition_id = f.proposition_id
            WHERE f.created_at <= ?
-             AND NOT EXISTS (SELECT 1 FROM scores s WHERE s.forecast_id = f.id)
+             AND NOT EXISTS (SELECT 1 FROM scores s
+                             WHERE s.forecast_id = f.id
+                               AND s.resolution_revision = COALESCE(r.revision, 0))
            ORDER BY f.id""", (ts,)).fetchall()
     already = con.execute("SELECT COUNT(*) FROM scores").fetchone()[0]
 
     scored = 0
     excluded: dict[str, int] = {}
 
-    for fid, p_est_bp, label_at, outcome in rows:
+    for fid, p_est_bp, label_at, outcome, rev in rows:
         reason = None
         if outcome is None:
             reason = "unresolved"
@@ -130,16 +135,17 @@ def score_all(con: sqlite3.Connection, as_of: str | None = None) -> ScoringRun:
         if reason:
             excluded[reason] = excluded.get(reason, 0) + 1
             con.execute(
-                "INSERT INTO scores(forecast_id, brier, scorable, exclusion_reason, "
-                "computed_at) VALUES(?,NULL,0,?,?)",
-                (fid, EXCLUSIONS.get(reason, reason), ts))
+                "INSERT INTO scores(forecast_id, resolution_revision, brier, "
+                "scorable, exclusion_reason, computed_at) VALUES(?,?,NULL,0,?,?)",
+                (fid, rev, EXCLUSIONS.get(reason, reason), ts))
             continue
 
         y = 1.0 if outcome == "resolved_yes" else 0.0
         b = (p_est_bp / 10000.0 - y) ** 2
         con.execute(
-            "INSERT INTO scores(forecast_id, brier, scorable, exclusion_reason, "
-            "computed_at) VALUES(?,?,1,NULL,?)", (fid, b, ts))
+            "INSERT INTO scores(forecast_id, resolution_revision, brier, scorable, "
+            "exclusion_reason, computed_at) VALUES(?,?,?,1,NULL,?)",
+            (fid, rev, b, ts))
         scored += 1
 
     con.commit()
@@ -165,8 +171,8 @@ def observations(
     sql = """SELECT f.p_est_bp, f.p_base_bp, f.regime_id, f.proposition_id,
                     r.outcome
              FROM forecasts f
-             JOIN scores s ON s.forecast_id = f.id AND s.scorable = 1
-             JOIN resolutions r ON r.proposition_id = f.proposition_id
+             JOIN current_scores s ON s.forecast_id = f.id AND s.scorable = 1
+             JOIN current_resolutions r ON r.proposition_id = f.proposition_id
              JOIN propositions pr ON pr.id = f.proposition_id
              WHERE 1=1"""
     args: list = []
@@ -193,6 +199,108 @@ def observations(
             regime_id=regime,
             key=f"prop:{prop_id}"))
     return out
+
+
+def record_resolution(
+    con: sqlite3.Connection,
+    proposition_id: int,
+    outcome: str,
+    resolution_source: str,
+    resolved_at: str | None = None,
+    recorded_at: str | None = None,
+) -> int:
+    """The first resolution of a proposition. A second one must be a revision."""
+    if con.execute("SELECT 1 FROM resolutions WHERE proposition_id=?",
+                   (proposition_id,)).fetchone():
+        raise EvaluationError(
+            f"proposition {proposition_id} is already resolved; a correction is a "
+            "revision (revise_resolution), which keeps the original on the record")
+    cur = con.execute(
+        """INSERT INTO resolutions
+           (proposition_id, revision, outcome, resolution_source, resolved_at,
+            recorded_at) VALUES (?,1,?,?,?,?)""",
+        (proposition_id, outcome, resolution_source,
+         timeutil.canonical(resolved_at) if resolved_at else None,
+         timeutil.canonical(recorded_at) if recorded_at else _now()))
+    con.commit()
+    return cur.lastrowid
+
+
+def revise_resolution(
+    con: sqlite3.Connection,
+    proposition_id: int,
+    outcome: str,
+    *,
+    adjudication: str,
+    adjudicator: str,
+    resolution_source: str | None = None,
+    resolved_at: str | None = None,
+    recorded_at: str | None = None,
+) -> int:
+    """
+    Correct an outcome by adding a revision. The original stays.
+
+    A disputed outcome later adjudicated is the case this exists for. Replacing
+    the row would erase the fact that the outcome was ever in doubt — which is
+    precisely what §7.3 forbids for claims, and there is no reason the rule
+    weakens one table over. The revision requires a written reason and a named
+    adjudicator, and the schema refuses it without both.
+
+    Existing scores are **not** rewritten. They were correct against the
+    revision they name; `score_all()` will add new rows against this one, and
+    `stale_scores()` lists what is waiting until it runs.
+    """
+    if not adjudication.strip() or not adjudicator.strip():
+        raise EvaluationError(
+            "a revision needs both a written reason and a named adjudicator")
+    row = con.execute(
+        "SELECT MAX(revision), resolution_source FROM resolutions "
+        "WHERE proposition_id=?", (proposition_id,)).fetchone()
+    if not row or row[0] is None:
+        raise EvaluationError(
+            f"proposition {proposition_id} has no resolution to revise")
+    cur = con.execute(
+        """INSERT INTO resolutions
+           (proposition_id, revision, outcome, resolution_source, resolved_at,
+            recorded_at, adjudication, adjudicator)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (proposition_id, row[0] + 1, outcome, resolution_source or row[1],
+         timeutil.canonical(resolved_at) if resolved_at else None,
+         timeutil.canonical(recorded_at) if recorded_at else _now(),
+         adjudication, adjudicator))
+    con.commit()
+    return cur.lastrowid
+
+
+def resolution_history(con: sqlite3.Connection, proposition_id: int) -> list[dict]:
+    """Every revision, oldest first. The audit trail a replacement would have destroyed."""
+    cur = con.execute(
+        "SELECT revision, outcome, resolution_source, resolved_at, recorded_at, "
+        "       adjudication, adjudicator FROM resolutions "
+        "WHERE proposition_id=? ORDER BY revision", (proposition_id,))
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def stale_scores(con: sqlite3.Connection) -> list[dict]:
+    """
+    Forecasts whose newest score predates the newest resolution revision.
+
+    Reported rather than fixed on read: the number of forecasts a correction
+    disturbed is itself worth seeing, and a function that quietly recomputed
+    would hide it.
+    """
+    cur = con.execute(
+        """SELECT f.id AS forecast_id, f.proposition_id,
+                  s.resolution_revision AS scored_against,
+                  r.revision AS current_revision
+           FROM forecasts f
+           JOIN current_scores s ON s.forecast_id = f.id
+           JOIN current_resolutions r ON r.proposition_id = f.proposition_id
+           WHERE s.resolution_revision < r.revision
+           ORDER BY f.id""")
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +351,7 @@ def settlement_divergence(con: sqlite3.Connection) -> list[dict]:
            FROM settlements s
            JOIN contracts c ON c.id = s.contract_id
            JOIN proposition_contract_binding b ON b.contract_id = c.id
-           JOIN resolutions r ON r.proposition_id = b.proposition_id
+           JOIN current_resolutions r ON r.proposition_id = b.proposition_id
            WHERE (r.outcome = 'resolved_yes' AND s.payout_per_share < 1.0)
               OR (r.outcome = 'resolved_no'  AND s.payout_per_share > 0.0)
            ORDER BY c.id""")

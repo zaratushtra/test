@@ -33,7 +33,8 @@ SCHEMA_PATH = os.path.join(
 #   2  trade_decisions.mode; claim_contract_effects keyed by horizon and estimator
 #   3  shadow execution (section 9) and collection (section 10) tables
 #   4  canonical-timestamp CHECK constraints on every compared column
-SCHEMA_VERSION = 4
+#   5  resolutions revised not replaced; scores keyed by resolution revision
+SCHEMA_VERSION = 5
 
 
 class LedgerError(RuntimeError):
