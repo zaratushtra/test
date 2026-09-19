@@ -4,9 +4,12 @@
 **Rewritten** 19 Sep 2026 following an external design review that invalidated three load-bearing
 parts of v1. Disposition of all 27 findings: `REVIEW-RESPONSE.md`.
 
-**Nature.** A design document. The schema in `db/schema_v2.sql` is real and its 36-probe suite
-passes; everything else is specification. No forecast has been made, nothing has been benchmarked,
-and no accuracy or profitability advantage has been demonstrated.
+**Nature.** A design document with two phases implemented. `db/schema_v2.sql` (36/36 probes) and
+the `spine/` ledger (33/33 checks) are real and tested; everything beyond Phase 1 is specification.
+No forecast has been made, nothing has been benchmarked, and no accuracy or profitability advantage
+has been demonstrated.
+
+**Phase status:** 0 blocked on external access and undeclared jurisdiction · **1 PASSED** · 2 next.
 
 ---
 
@@ -116,19 +119,56 @@ means a low probability of *detecting* an effect of the specified size; it does 
 that fires noise. The practical conclusion — `n_eff = 10` is not a usable gate — survives, and
 strengthens under the corrected coefficient.
 
-### 3.2 Weekly effective sample sizes do not add
+### 3.2 Weekly effective sample sizes do not add — measured in Phase 1
 
-v1 assumed they accumulate linearly. They do not, unless between-week dependence is negligible:
+v1 assumed they accumulate linearly. Phase 1 simulated it
+(`phase1/serial_dependence.py`, full results in `docs/PHASE1-REPORT.md`) and the answer is worse
+than "they don't quite".
 
-```
-8/week, within-week r̄ = 0.05        → 5.93 per week
-× 42 independent weeks              → ~249
-but r̄ = 0.05 across all 336         → 336 / (1 + 335 × 0.05) ≈ 18.9
-```
+**Effective sample size has a ceiling that time cannot lift.** A component `g` shared across *all*
+observations — one analyst, one frozen model version, one macro regime — makes `n_eff → 1/r_between`:
 
-Same analyst, same model version, same macro regime produce exactly that between-week dependence.
-**Serial dependence must be measured, not assumed away.** Until it is, every timeline in §13 is
-provisional by up to an order of magnitude — which is the single largest open risk in this document.
+| `r_between` | n_eff ceiling | @1yr | @5yr | weeks to n_eff = 314 |
+|---|---|---|---|---|
+| 0.0000 | unbounded | 308 | 1541 | 53 |
+| 0.0032 | 312 | 157 | 261 | **unreachable** |
+| 0.0500 | 20 | 19 | 20 | **unreachable** |
+
+**Between-week correlation must stay below 0.0032** for the Phase 3 gate to be reachable at all.
+
+**And the gate as specified is invalid, not merely slow.** Simulating the decision rule — cluster
+bootstrap over weeks, 2.5th percentile — against a *true effect of zero*:
+
+| `r_between` | weeks | fires on noise |
+|---|---|---|
+| 0.000 | 52 | 2.5% (nominal) |
+| 0.005 | 52 | **15.0%** |
+| 0.050 | 52 | **37.0%** |
+| 0.050 | 260 | **38.0%** |
+
+Running five times longer does not help. The mechanism: the grand mean is **not consistent** when a
+global component exists — its variance tends to `γ²`, not zero — while a week-level bootstrap cannot
+see `g`, because every resample contains it, and keeps shrinking the interval. At 1040 weeks the
+reported interval is **10× too narrow**.
+
+**The fix is to sample `g` rather than bootstrap around it**: rotate whatever it is constant within
+and bootstrap at that level.
+
+| independent regimes | false-positive rate | power |
+|---|---|---|
+| 1 | 43.5% | 82% |
+| 4 | 13.0% | 66% |
+| **12** | **4.0%** (nominal) | **94%** |
+
+**At least ~12 independent regimes** are required. One regime is worthless at any duration. Forecasts
+therefore carry a mandatory `regime_id`, and scoring groups by it.
+
+This cuts against the instinct to freeze everything for reproducibility. Both are needed: freeze
+*within* a regime so each forecast reconstructs, rotate *across* regimes so `g` is sampled.
+
+`r_between` is now a **measured deliverable** — Phase 3 estimates it from the accumulating record
+and re-derives its own stopping rule. The simulation bounds the problem; it does not measure the
+real value, which only resolved forecasts can supply.
 
 ### 3.3 Basket size — what survives and what does not
 
@@ -492,9 +532,9 @@ stretch by up to an order of magnitude. That measurement is itself Phase 1 work.
 | Phase | Work | Gate |
 |---|---|---|
 | **0 · Feasibility** | Jurisdiction/eligibility (first). Market screen with corrected coefficient. Vintage audit. Throughput pilot. | Eligibility known; enough independent clusters; vintage coverage adequate; throughput consistent with §3.1 |
-| **1 · Ledger & registry** | Contract registry, evidence ledger, availability-time discipline, schema v2 live, external anchoring. Measure serial dependence. | Correction regression test passes; a forecast reconstructs from its manifest alone; chain anchored externally |
-| **2 · Narrow forecasting** | One or two event families. Baseline + independent + market-conditioned. Frozen selection rules, explicit abstention. **Shadow execution runs in parallel.** | Forecasts registering and scoring; ablation harness operational |
-| **3 · Prospective evaluation** | Accumulate pre-registered forecasts. Simulate power for the real question mix. | Weighted-estimator CI lower bound on BSS > 0 at the simulated requirement, *and* calibration reported separately |
+| **1 · Ledger & registry** ✅ | Contract registry, evidence ledger, availability-time discipline, schema v2 live, external anchoring. Measure serial dependence. | **PASSED** — 33/33 (`tests/test_phase1.py`), 36/36 (`db/test_schema_v2.py`). See `docs/PHASE1-REPORT.md`. |
+| **2 · Narrow forecasting** | One or two event families. Baseline + independent + market-conditioned. Frozen selection rules, explicit abstention. **Shadow execution runs in parallel.** | Forecasts registering and scoring; ablation harness operational; **`regime_id` populated and the regime-level bootstrap is the only scoring path**, so the invalid week-level rule cannot be used by accident |
+| **3 · Prospective evaluation** | Accumulate pre-registered forecasts across **≥12 independent regimes**. Estimate `r_between` from the record and re-derive the stopping rule. | Regime-level bootstrap CI lower bound on BSS > 0 at the re-derived requirement, **≥12 regimes**, *and* calibration reported separately |
 | **4 · Container** | Multi-stage CPU-only build, tini, file secrets, health lease, reconciliation. | Clean SIGTERM cancels open orders; restart reconciles without duplicates |
 | **5 · Live** *(only if eligible)* | Rebuild including order management. Minimum size, hard caps, automatic reversion. | Phase 3 passed **and** shadow execution showed positive net result after realistic costs |
 
@@ -521,8 +561,10 @@ Confirmed 19 Sep 2026 and time-sensitive; re-check before relying on any of it.
 ## 15. What could end this
 
 1. **Eligibility.** Close-only jurisdiction makes P3 unavailable. Knowable in ten minutes.
-2. **Serial dependence.** If between-week correlation is material, the validation timeline may be
-   years rather than months (§3.2).
+2. **Serial dependence — now quantified.** Measured in Phase 1: `r_between` above 0.0032 makes the
+   gate unreachable at any duration, and ≥12 independent regimes are required for the test to be
+   valid at all. The real value of `r_between` is still unknown and only resolved forecasts can
+   supply it (§3.2).
 3. **Execution.** Shadow fills may show the edge does not survive the spread — which is why it now
    runs from Phase 2 rather than Phase 5.
 4. **Priced-in evidence.** The market-conditioned model may show the evidence system adds nothing

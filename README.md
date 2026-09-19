@@ -1,0 +1,55 @@
+# SPINE
+
+Structural forecasting with auditable pre-registration, evaluated against
+prediction markets.
+
+**Canonical design:** [`SPINE-DESIGN-V2.md`](SPINE-DESIGN-V2.md)
+
+## Status
+
+| Phase | State | Evidence |
+|---|---|---|
+| 0 · Feasibility | **blocked** | Polymarket and FRED unreachable from the build environment; operating jurisdiction undeclared. PolyBench audit complete (failed — see `PHASE0-FINDINGS.md`). |
+| 1 · Ledger & registry | **passed** | 33/33 `tests/test_phase1.py`, 36/36 `db/test_schema_v2.py` — see `docs/PHASE1-REPORT.md` |
+| 2 · Narrow forecasting | next | — |
+| 3–6 | specification | — |
+
+Nothing here demonstrates predictive skill or profitability. Phases 0–1 cover
+feasibility, integrity and plumbing only.
+
+## Layout
+
+```
+SPINE-DESIGN-V2.md        canonical design and roadmap
+PHASE0-FINDINGS.md        Phase 0 results, including the PolyBench retraction
+db/schema_v2.sql          20 STRICT tables; the guards live here, not in Python
+db/test_schema_v2.py      probe suite — every finding an external review raised
+spine/                    canonicalisation, hash chain, evidence ledger
+phase0/                   market screen, vintage audit, throughput pilot
+phase1/serial_dependence.py   the analysis that invalidated the original gate
+tests/test_phase1.py      Phase 1 validation
+docs/                     phase reports, the external review, and its disposition
+docs/history/             superseded v1 documents
+```
+
+## Validation
+
+```bash
+python3 db/test_schema_v2.py      # schema guarantees
+python3 tests/test_phase1.py      # ledger, chain, availability discipline
+python3 phase1/serial_dependence.py   # power and serial dependence analysis
+```
+
+Stdlib only; no installs. Requires Python 3.10+ and SQLite 3.37+ (STRICT tables).
+
+## Two results worth knowing before reading anything else
+
+**The probability firewall was removed.** Capping the probability of an event by
+horizon class confuses it with confidence in the estimate; the v1 schema rejected
+a legitimate 2% ten-day forecast. Estimate, uncertainty and trading permission
+are now separate. Cap exposure, never the probability of reality.
+
+**The original validation gate was invalid, not merely slow.** A cluster
+bootstrap over weeks cannot see a component shared across all weeks, and fires on
+pure noise up to 38% of the time — running longer makes it marginally worse.
+Scoring now groups by `regime_id` and requires at least 12 independent regimes.

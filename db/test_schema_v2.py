@@ -73,13 +73,13 @@ def seed(con):
 FC_COLS = """(forecast_hash,prev_hash,proposition_id,p_est_bp,p_lo_bp,p_hi_bp,
               uncertainty_method,min_width_bp,p_base_bp,forecast_kind,
               reference_class_version_id,inputs_manifest_hash,model_version,
-              created_at,source)"""
+              regime_id,created_at,source)"""
 
 
 def insert_forecast(con, h, prev, est, lo, hi, min_w=0, created="2026-06-02T00:00:00.000Z"):
     con.execute(
         f"INSERT INTO forecasts {FC_COLS} VALUES(?,?,1,?,?,?,'bootstrap',?,1000,"
-        f"'independent',1,'m1','mv1',?,'human')",
+        f"'independent',1,'m1','mv1','r1',?,'human')",
         (h, prev, est, lo, hi, min_w, created),
     )
     con.commit()
@@ -116,7 +116,7 @@ def main() -> int:
     check("base probability out of range (15000)",
           lambda: con.execute(
               f"INSERT INTO forecasts {FC_COLS} VALUES('f1',?,1,5000,4000,6000,"
-              f"'m',0,15000,'independent',1,'m1','mv1','2026-06-02T00:00:00.000Z','human')",
+              f"'m',0,15000,'independent',1,'m1','mv1','r1','2026-06-02T00:00:00.000Z','human')",
               (GENESIS,)), "reject")
 
     con = fresh(); seed(con)

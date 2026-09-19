@@ -305,6 +305,11 @@ CREATE TABLE forecasts (
     inputs_manifest_hash   TEXT NOT NULL REFERENCES manifests(manifest_hash),
     model_version          TEXT NOT NULL,
 
+    -- The unit across which the shared component g varies (v2 section 3.2).
+    -- Phase 1 established that a week-level bootstrap cannot see g and reports
+    -- intervals up to 10x too narrow; scoring MUST group by this.
+    regime_id              TEXT NOT NULL,
+
     created_at             TEXT NOT NULL,
     label_available_at     TEXT,          -- when the outcome became knowable
     source                 TEXT NOT NULL CHECK (source IN ('human','llm_assisted','model')),
