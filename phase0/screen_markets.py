@@ -31,6 +31,12 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
+
+# UNVERIFIED and time-sensitive: venue geoblock tiers change. Confirmed 19 Sep 2026
+# that the UK is close-only on BOTH frontend and API. Ireland/Netherlands were
+# frontend-only at that date. Re-check before each run; this list is a reminder,
+# not an authority.
+CLOSE_ONLY_JURISDICTIONS = {"GB", "UK"}
 USER_AGENT = "spine-phase0-screen/0.1"
 
 # Tolerant extraction: Gamma has changed field names historically and we could not
@@ -326,9 +332,18 @@ def basket_r_bar(basket: list[Market], within_cluster_r: float = 0.80,
     return (same * within_cluster_r + diff * cross_cluster_r) / total
 
 
+# Corrected after the 19 Sep 2026 review. The original 24.7 was derived with a
+# one-sided alpha=0.05 (z=1.645) but the gate uses the 2.5th bootstrap percentile,
+# which is one-sided 2.5% (z=1.96). Consistent with the stated gate:
+#   (1.96 + 0.8416)^2 * 4 = 31.4
+# Every projection moves out ~27%. This remains an approximation, not a bound: it
+# substitutes benchmark variance for the model-conditional term and drops Var(d^2).
+POWER_COEFFICIENT = 31.4
+
+
 def required_n_eff(bss: float) -> float:
-    """SPINE §2: n_eff >= 24.7 / BSS for 80% power, one-sided alpha=0.05."""
-    return 24.7 / bss if bss > 0 else float("inf")
+    """Approximate n_eff for 80% power against a 95% CI lower bound. See above."""
+    return POWER_COEFFICIENT / bss if bss > 0 else float("inf")
 
 
 # --------------------------------------------------------------------------
@@ -341,6 +356,8 @@ def main() -> int:
     ap.add_argument("--weekly-size", type=int, default=15, help="target markets per week")
     ap.add_argument("--target-bss", type=float, default=0.10,
                     help="effect size the Register A gate must detect")
+    ap.add_argument("--jurisdiction", default="unknown",
+                    help="ISO-3166 code of the operating jurisdiction; gates trading")
     ap.add_argument("--outdir", default="out")
     ap.add_argument("--dump-schema", action="store_true",
                     help="print the keys of the first raw market and exit")
@@ -348,6 +365,28 @@ def main() -> int:
     args = ap.parse_args()
 
     now = datetime.now(timezone.utc)
+
+    # Gate zero. Polymarket is close-only on BOTH frontend and API for some
+    # jurisdictions (the UK among them: no new positions, no Gambling Commission
+    # licence). Where that applies, no amount of forecasting skill produces a
+    # tradeable T1/T2 system, and the screen below is research-only. This is a
+    # ten-minute check that can moot months of work, so it runs first and loudly.
+    print(f"\n{'#'*66}\n# GATE ZERO — TRADING ELIGIBILITY\n{'#'*66}")
+    if args.jurisdiction == "unknown":
+        print("Operating jurisdiction: NOT DECLARED.\n"
+              "  Pass --jurisdiction <ISO-3166 code> once confirmed. Until then the\n"
+              "  screen reports the research universe only; no result here implies a\n"
+              "  tradeable system. Verify against the venue's own geoblock policy —\n"
+              "  frontend and API tiers differ, and 'close-only' means exactly that.")
+    elif args.jurisdiction.upper() in CLOSE_ONLY_JURISDICTIONS:
+        print(f"Operating jurisdiction: {args.jurisdiction.upper()} — CLOSE-ONLY.\n"
+              "  New positions cannot be opened. T1/T2 trading is not available.\n"
+              "  The screen continues in RESEARCH-ONLY mode; Phase 5/6 do not apply.")
+    else:
+        print(f"Operating jurisdiction: {args.jurisdiction.upper()} — not on the "
+              "close-only list used here.\n"
+              "  UNVERIFIED: confirm against the venue's live geoblock policy before "
+              "relying on this.")
 
     if args.input_json:
         with open(args.input_json, encoding="utf-8") as fh:
@@ -477,6 +516,10 @@ def main() -> int:
         "n_eff_required": round(need, 1),
         "projected_weeks": round(weeks, 1),
         "gate": verdict,
+        "jurisdiction": args.jurisdiction,
+        "trading_available": args.jurisdiction.upper() not in CLOSE_ONLY_JURISDICTIONS
+                             and args.jurisdiction != "unknown",
+        "power_coefficient": POWER_COEFFICIENT,
         "field_extraction_ok": extracted >= len(markets) * 0.5,
         "optimal_basket": best,
         "basket_sweep": sweep,

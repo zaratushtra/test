@@ -1,0 +1,449 @@
+-- ============================================================================
+-- SPINE schema v2
+--
+-- Rewritten after the 19 Sep 2026 design review. Every table is STRICT, which
+-- means timestamps are TEXT (ISO-8601 UTC, millisecond precision) — STRICT
+-- permits only INT/INTEGER/REAL/TEXT/BLOB/ANY, so DATE and TIMESTAMP affinities
+-- are gone deliberately, not by oversight.
+--
+-- What changed and why:
+--   * The probability band is REMOVED. It confused P(event) with confidence in
+--     the estimate and made the database refuse legitimate forecasts. Estimate,
+--     uncertainty and trading permission are now three separate things.
+--   * Likelihood ratios are bound to (claim, contract, horizon, model version).
+--     A fact has no context-free LLR.
+--   * The research proposition and the tradeable contract are separate objects.
+--   * Settlement payout is recorded separately from the binary research outcome,
+--     so a UMA 50/50 resolution cannot vanish from economic evaluation.
+--   * Five distinct times are tracked; available_for_decision_at governs
+--     retrieval, not arrival time.
+--   * Reference classes are immutable versions, not mutable rows.
+--   * Cycle detection is enforced, not asserted.
+--   * The `sources` table exists.
+--
+-- Verified against SQLite 3.45.1. Probe suite: db/test_schema_v2.py
+-- ============================================================================
+
+PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+PRAGMA busy_timeout = 5000;
+
+-- ============================================================================
+-- 1. EVIDENCE LAYER
+-- ============================================================================
+
+CREATE TABLE sources (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    name               TEXT NOT NULL UNIQUE,
+    kind               TEXT NOT NULL CHECK (kind IN
+                         ('wire','outlet','aggregator','official','court','regulator',
+                          'exchange','research','social','other')),
+    owner_group        TEXT,              -- media group, for ownership collapse
+    homepage           TEXT,
+    created_at         TEXT NOT NULL
+) STRICT;
+
+-- Error-correlation between sources. Deliberately NOT named "co_publication":
+-- the review is right that covering the same events is not the same as having
+-- correlated errors. Co-publication is one input to the estimate, not the
+-- estimate itself.
+CREATE TABLE source_error_correlation (
+    source_a           INTEGER NOT NULL REFERENCES sources(id),
+    source_b           INTEGER NOT NULL REFERENCES sources(id),
+    correlation        REAL NOT NULL CHECK (correlation >= -1.0 AND correlation <= 1.0),
+    basis              TEXT NOT NULL CHECK (basis IN
+                         ('shared_upstream','ownership','syndication','co_publication',
+                          'observed_error_agreement','assumed')),
+    n_observations     INTEGER NOT NULL CHECK (n_observations >= 0),
+    computed_at        TEXT NOT NULL,     -- point-in-time: never applied retroactively
+    PRIMARY KEY (source_a, source_b, computed_at),
+    CHECK (source_a < source_b)
+) STRICT;
+
+CREATE TABLE signal_items (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_hash             TEXT NOT NULL,
+    source_id                INTEGER NOT NULL REFERENCES sources(id),
+    url                      TEXT,
+    -- The five times. Only the last one governs retrieval.
+    event_at                 TEXT,        -- when the underlying event occurred
+    claimed_published_at     TEXT,        -- the source's own claim; a claim, not a fact
+    first_seen_at            TEXT NOT NULL,   -- our collector observed it
+    artifact_created_at      TEXT NOT NULL,   -- this row/version was created
+    available_for_decision_at TEXT NOT NULL,  -- usable by a decision at or after this
+    title                    TEXT,
+    body_ref                 TEXT,
+    item_class               TEXT NOT NULL CHECK (item_class IN
+                               ('reportage','opinion','market_commentary',
+                                'primary_source','other')),
+    UNIQUE (content_hash, source_id),
+    CHECK (available_for_decision_at >= first_seen_at)
+) STRICT;
+
+CREATE INDEX idx_items_available ON signal_items (available_for_decision_at);
+
+CREATE TABLE event_clusters (
+    cluster_id         TEXT NOT NULL,
+    cluster_version    INTEGER NOT NULL,
+    created_at         TEXT NOT NULL,
+    window_start       TEXT NOT NULL,
+    window_end         TEXT NOT NULL,
+    PRIMARY KEY (cluster_id, cluster_version)
+) STRICT;
+
+CREATE TABLE cluster_members (
+    cluster_id         TEXT NOT NULL,
+    cluster_version    INTEGER NOT NULL,
+    item_id            INTEGER NOT NULL REFERENCES signal_items(id),
+    is_originator      INTEGER NOT NULL DEFAULT 0 CHECK (is_originator IN (0,1)),
+    PRIMARY KEY (cluster_id, cluster_version, item_id),
+    FOREIGN KEY (cluster_id, cluster_version)
+        REFERENCES event_clusters(cluster_id, cluster_version)
+) STRICT;
+
+-- A claim is what was asserted. It carries NO likelihood ratio: the same fact
+-- has different predictive weight for different contracts.
+CREATE TABLE claims (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_hash         TEXT NOT NULL UNIQUE,
+    cluster_id         TEXT NOT NULL,
+    cluster_version    INTEGER NOT NULL,
+    assertion          TEXT NOT NULL,
+    -- The four verification questions, answered separately.
+    authenticity       TEXT NOT NULL CHECK (authenticity IN
+                         ('artifact_verified','artifact_unverified','artifact_disputed')),
+    extraction_fidelity TEXT NOT NULL CHECK (extraction_fidelity IN
+                         ('checked_faithful','unchecked','known_lossy')),
+    establishes        TEXT NOT NULL CHECK (establishes IN
+                         ('underlying_fact','only_that_it_was_asserted','indeterminate')),
+    primary_artifact_id INTEGER REFERENCES signal_items(id),
+    n_eff_sources      REAL NOT NULL CHECK (n_eff_sources > 0),
+    available_for_decision_at TEXT NOT NULL,
+    computed_at        TEXT NOT NULL,
+    feature_version    TEXT NOT NULL,
+    FOREIGN KEY (cluster_id, cluster_version)
+        REFERENCES event_clusters(cluster_id, cluster_version)
+) STRICT;
+
+CREATE TRIGGER claims_append_only BEFORE UPDATE ON claims
+BEGIN SELECT RAISE(ABORT, 'claims are append-only; emit a new feature_version'); END;
+
+-- Contradictions are recorded, not auto-applied. An unsupported denial must not
+-- dilute strong evidence.
+CREATE TABLE claim_contradictions (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_a            INTEGER NOT NULL REFERENCES claims(id),
+    claim_b            INTEGER NOT NULL REFERENCES claims(id),
+    kind               TEXT NOT NULL CHECK (kind IN
+                         ('genuine_contradiction','changed_circumstances',
+                          'scope_mismatch','unresolved')),
+    adjudication       TEXT,
+    adjudicator        TEXT,
+    adjudicated_at     TEXT,
+    detected_at        TEXT NOT NULL,
+    CHECK (claim_a <> claim_b)
+) STRICT;
+
+-- ============================================================================
+-- 2. TARGET LAYER — research proposition vs tradeable contract
+-- ============================================================================
+
+CREATE TABLE propositions (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposition_hash   TEXT NOT NULL UNIQUE,
+    statement          TEXT NOT NULL,
+    resolution_criterion TEXT NOT NULL,
+    deadline_utc       TEXT NOT NULL,
+    event_family       TEXT NOT NULL,
+    horizon_class      TEXT NOT NULL CHECK (horizon_class IN ('T1','T2','T3')),
+    created_at         TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE contracts (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    venue                 TEXT NOT NULL,
+    market_id             TEXT NOT NULL,
+    outcome_token_id      TEXT NOT NULL,
+    rules_text            TEXT NOT NULL,
+    rules_version_hash    TEXT NOT NULL,
+    deadline_utc          TEXT NOT NULL,
+    resolution_source     TEXT NOT NULL,
+    -- Payout is not binary: UMA can settle "Unknown" at 0.50.
+    payout_states         TEXT NOT NULL,   -- JSON: {"YES":1.0,"NO":0.0,"UNKNOWN":0.5}
+    fee_schedule_ref      TEXT,            -- fees vary by category; never assume
+    eligibility_status    TEXT NOT NULL CHECK (eligibility_status IN
+                            ('tradeable','close_only','blocked','unknown')),
+    eligibility_checked_at TEXT NOT NULL,
+    first_seen_at         TEXT NOT NULL,
+    UNIQUE (venue, market_id, outcome_token_id, rules_version_hash)
+) STRICT;
+
+-- Binding a proposition to a contract is an explicit, reviewable act.
+CREATE TABLE proposition_contract_binding (
+    proposition_id     INTEGER NOT NULL REFERENCES propositions(id),
+    contract_id        INTEGER NOT NULL REFERENCES contracts(id),
+    match_quality      TEXT NOT NULL CHECK (match_quality IN
+                         ('exact','material_mismatch','minor_divergence','unreviewed')),
+    reviewer           TEXT NOT NULL,
+    reviewed_at        TEXT NOT NULL,
+    note               TEXT,
+    PRIMARY KEY (proposition_id, contract_id)
+) STRICT;
+
+-- ============================================================================
+-- 3. REFERENCE CLASSES — immutable versions
+-- ============================================================================
+
+CREATE TABLE reference_class_versions (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_name         TEXT NOT NULL,
+    version            INTEGER NOT NULL,
+    description        TEXT NOT NULL,
+    n                  INTEGER NOT NULL CHECK (n >= 0),
+    k                  INTEGER NOT NULL CHECK (k >= 0 AND k <= n),
+    -- Per-family prior. Beta(1,3) has mean 0.25 and is NOT a rare-event default.
+    alpha              REAL NOT NULL CHECK (alpha > 0),
+    beta               REAL NOT NULL CHECK (beta > 0),
+    prior_justification TEXT NOT NULL,
+    -- Exposure semantics: "X happens by D" needs a denominator, not just events.
+    exposure_window_days INTEGER,
+    censoring_note     TEXT,
+    frozen_at          TEXT NOT NULL,
+    selection_rule_ref TEXT NOT NULL,   -- predeclared rule; a timestamp alone proves nothing
+    UNIQUE (class_name, version)
+) STRICT;
+
+CREATE TRIGGER refclass_immutable_update BEFORE UPDATE ON reference_class_versions
+BEGIN SELECT RAISE(ABORT, 'reference class versions are immutable; create a new version'); END;
+
+CREATE TRIGGER refclass_immutable_delete BEFORE DELETE ON reference_class_versions
+BEGIN SELECT RAISE(ABORT, 'reference class versions are immutable'); END;
+
+CREATE TABLE reference_class_members (
+    class_version_id   INTEGER NOT NULL REFERENCES reference_class_versions(id),
+    event_name         TEXT NOT NULL,
+    event_date         TEXT NOT NULL,    -- when it occurred
+    outcome            INTEGER NOT NULL CHECK (outcome IN (0,1)),
+    added_at           TEXT NOT NULL,    -- audit: when it entered the class
+    source_url         TEXT,
+    PRIMARY KEY (class_version_id, event_name)
+) STRICT;
+
+CREATE TRIGGER refclass_members_immutable BEFORE UPDATE ON reference_class_members
+BEGIN SELECT RAISE(ABORT, 'class membership is immutable within a version'); END;
+
+-- ============================================================================
+-- 4. EVIDENCE -> CONTRACT EFFECTS
+-- The missing core. An LLR is meaningless without a target and a horizon.
+-- ============================================================================
+
+CREATE TABLE claim_contract_effects (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id            INTEGER NOT NULL REFERENCES claims(id),
+    contract_id         INTEGER NOT NULL REFERENCES contracts(id),
+    horizon_days        REAL NOT NULL CHECK (horizon_days > 0),
+    -- log P(E|Y=1,I) - log P(E|Y=0,I): conditional on information already in.
+    llr                 REAL NOT NULL,
+    conditioned_on_ref  TEXT NOT NULL,   -- manifest of I(t-) at estimation time
+    estimator           TEXT NOT NULL CHECK (estimator IN
+                          ('fitted_model','elicited_prior','llm_proposed_unvalidated')),
+    model_version       TEXT NOT NULL,
+    -- The influence budget binds the FINAL contribution, not the raw llr.
+    final_contribution  REAL NOT NULL,
+    contribution_cap    REAL NOT NULL CHECK (contribution_cap > 0),
+    available_for_decision_at TEXT NOT NULL,
+    computed_at         TEXT NOT NULL,
+    CHECK (abs(final_contribution) <= contribution_cap),
+    UNIQUE (claim_id, contract_id, model_version, computed_at)
+) STRICT;
+
+CREATE TRIGGER effects_append_only BEFORE UPDATE ON claim_contract_effects
+BEGIN SELECT RAISE(ABORT, 'effects are append-only; emit a new model_version'); END;
+
+-- ============================================================================
+-- 5. INPUT COMMITMENT — content-addressed, not label-addressed
+-- ============================================================================
+
+CREATE TABLE manifests (
+    manifest_hash      TEXT PRIMARY KEY,
+    kind               TEXT NOT NULL CHECK (kind IN
+                         ('forecast_inputs','model_config','prompt_bundle','data_snapshot')),
+    content            TEXT NOT NULL,    -- canonical JSON enumerating every input by hash
+    created_at         TEXT NOT NULL
+) STRICT;
+
+CREATE TRIGGER manifests_immutable BEFORE UPDATE ON manifests
+BEGIN SELECT RAISE(ABORT, 'manifests are content-addressed and immutable'); END;
+
+-- ============================================================================
+-- 6. FORECASTS — estimate and uncertainty, no probability band
+-- ============================================================================
+
+CREATE TABLE forecasts (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    forecast_hash          TEXT NOT NULL UNIQUE,
+    prev_hash              TEXT NOT NULL UNIQUE,
+    proposition_id         INTEGER NOT NULL REFERENCES propositions(id),
+    contract_id            INTEGER REFERENCES contracts(id),   -- null for research-only
+
+    -- The estimate. Full open interval: a 2% ten-day forecast is legitimate.
+    p_est_bp               INTEGER NOT NULL CHECK (p_est_bp > 0 AND p_est_bp < 10000),
+    -- Uncertainty about the estimate, stated separately and never conflated.
+    p_lo_bp                INTEGER NOT NULL CHECK (p_lo_bp > 0 AND p_lo_bp < 10000),
+    p_hi_bp                INTEGER NOT NULL CHECK (p_hi_bp > 0 AND p_hi_bp < 10000),
+    uncertainty_method     TEXT NOT NULL,
+    -- Horizon class sets a MINIMUM interval width, never a cap on the estimate.
+    min_width_bp           INTEGER NOT NULL CHECK (min_width_bp >= 0),
+
+    p_base_bp              INTEGER NOT NULL CHECK (p_base_bp > 0 AND p_base_bp < 10000),
+    p_market_bp            INTEGER CHECK (p_market_bp IS NULL OR
+                                          (p_market_bp > 0 AND p_market_bp < 10000)),
+    forecast_kind          TEXT NOT NULL CHECK (forecast_kind IN
+                             ('independent','market_conditioned')),
+
+    reference_class_version_id INTEGER NOT NULL REFERENCES reference_class_versions(id),
+    inputs_manifest_hash   TEXT NOT NULL REFERENCES manifests(manifest_hash),
+    model_version          TEXT NOT NULL,
+
+    created_at             TEXT NOT NULL,
+    label_available_at     TEXT,          -- when the outcome became knowable
+    source                 TEXT NOT NULL CHECK (source IN ('human','llm_assisted','model')),
+    source_detail          TEXT,
+
+    CHECK (p_lo_bp <= p_est_bp AND p_est_bp <= p_hi_bp),
+    CHECK (p_hi_bp - p_lo_bp >= min_width_bp)
+) STRICT;
+
+CREATE TRIGGER forecasts_no_update BEFORE UPDATE ON forecasts
+BEGIN SELECT RAISE(ABORT, 'forecasts are immutable after registration'); END;
+
+CREATE TRIGGER forecasts_no_delete BEFORE DELETE ON forecasts
+BEGIN SELECT RAISE(ABORT, 'forecasts are never deleted'); END;
+
+CREATE TRIGGER forecasts_chain_head BEFORE INSERT ON forecasts
+FOR EACH ROW WHEN (SELECT COUNT(*) FROM forecasts) > 0
+BEGIN
+    SELECT RAISE(ABORT, 'prev_hash does not match current chain head')
+    WHERE NEW.prev_hash <> (SELECT forecast_hash FROM forecasts ORDER BY id DESC LIMIT 1);
+END;
+
+CREATE TRIGGER forecasts_chain_genesis BEFORE INSERT ON forecasts
+FOR EACH ROW WHEN (SELECT COUNT(*) FROM forecasts) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'genesis must use the genesis sentinel')
+    WHERE NEW.prev_hash <> '0000000000000000000000000000000000000000000000000000000000000000';
+END;
+
+CREATE TRIGGER forecasts_class_frozen_first BEFORE INSERT ON forecasts
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT, 'reference class was not frozen before forecast creation')
+    WHERE (SELECT frozen_at FROM reference_class_versions
+           WHERE id = NEW.reference_class_version_id) >= NEW.created_at;
+END;
+
+-- A hash chain proves internal consistency. It does NOT prove when the chain
+-- was created — a whole chain can be fabricated later with backdated stamps.
+-- External anchoring is what makes pre-registration a claim anyone need believe.
+CREATE TABLE chain_anchors (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    chain_head_hash    TEXT NOT NULL,
+    method             TEXT NOT NULL CHECK (method IN
+                         ('rfc3161','public_append_only_log','blockchain','other')),
+    external_ref       TEXT NOT NULL,
+    proof              TEXT NOT NULL,
+    anchored_at        TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE forecast_edges (
+    parent_hash        TEXT NOT NULL REFERENCES forecasts(forecast_hash),
+    child_hash         TEXT NOT NULL REFERENCES forecasts(forecast_hash),
+    conditional_prob   REAL NOT NULL CHECK (conditional_prob > 0 AND conditional_prob < 1),
+    -- Which dependence this is. Score correlation is not loss correlation.
+    dependence_kind    TEXT NOT NULL CHECK (dependence_kind IN
+                         ('score','loss','evidence')),
+    correlation        REAL NOT NULL CHECK (correlation >= -1.0 AND correlation <= 1.0),
+    created_at         TEXT NOT NULL,
+    PRIMARY KEY (parent_hash, child_hash, dependence_kind),
+    CHECK (parent_hash <> child_hash)
+) STRICT;
+
+CREATE TRIGGER edges_no_cycle BEFORE INSERT ON forecast_edges
+BEGIN
+    SELECT RAISE(ABORT, 'edge would create a cycle in the forecast DAG')
+    WHERE EXISTS (
+        WITH RECURSIVE reach(n) AS (
+            SELECT NEW.child_hash
+            UNION
+            SELECT e.child_hash FROM forecast_edges e
+            JOIN reach r ON e.parent_hash = r.n
+            WHERE e.dependence_kind = NEW.dependence_kind
+        )
+        SELECT 1 FROM reach WHERE n = NEW.parent_hash
+    );
+END;
+
+-- ============================================================================
+-- 7. DECISION LAYER — exposure is capped, reality is not
+-- ============================================================================
+
+CREATE TABLE trade_decisions (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    forecast_id            INTEGER NOT NULL REFERENCES forecasts(id),
+    contract_id            INTEGER NOT NULL REFERENCES contracts(id),
+    decided_at             TEXT NOT NULL,
+    -- Executable, not midpoint.
+    expected_acquisition_bp INTEGER CHECK (expected_acquisition_bp IS NULL OR
+                              (expected_acquisition_bp > 0 AND expected_acquisition_bp < 10000)),
+    intended_size_usd      REAL CHECK (intended_size_usd IS NULL OR intended_size_usd >= 0),
+    costs_bp               INTEGER CHECK (costs_bp IS NULL OR costs_bp >= 0),
+    -- EV computed against the CONSERVATIVE end of the interval, not the point.
+    ev_per_share_bp        REAL,
+    permitted              INTEGER NOT NULL CHECK (permitted IN (0,1)),
+    abstain_reason         TEXT,
+    max_notional_usd       REAL NOT NULL CHECK (max_notional_usd >= 0),
+    cluster_exposure_cap_usd REAL NOT NULL CHECK (cluster_exposure_cap_usd >= 0),
+    eligibility_status     TEXT NOT NULL CHECK (eligibility_status IN
+                             ('tradeable','close_only','blocked','unknown')),
+    book_snapshot_ref      TEXT,
+    CHECK (permitted = 1 OR abstain_reason IS NOT NULL),
+    CHECK (permitted = 0 OR eligibility_status = 'tradeable')
+) STRICT;
+
+-- ============================================================================
+-- 8. OUTCOMES — research outcome and economic settlement kept separate
+-- ============================================================================
+
+CREATE TABLE resolutions (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposition_id     INTEGER NOT NULL REFERENCES propositions(id),
+    outcome            TEXT NOT NULL CHECK (outcome IN
+                         ('resolved_yes','resolved_no','void','disputed','unresolvable')),
+    resolution_source  TEXT NOT NULL,
+    resolved_at        TEXT,
+    recorded_at        TEXT NOT NULL,
+    UNIQUE (proposition_id)
+) STRICT;
+
+CREATE TABLE settlements (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id        INTEGER NOT NULL REFERENCES contracts(id),
+    settlement_state   TEXT NOT NULL CHECK (settlement_state IN
+                         ('settled','disputed','uma_escalated','pending','cancelled')),
+    payout_per_share   REAL NOT NULL CHECK (payout_per_share >= 0.0 AND payout_per_share <= 1.0),
+    settled_at         TEXT,
+    recorded_at        TEXT NOT NULL,
+    note               TEXT,
+    UNIQUE (contract_id)
+) STRICT;
+
+CREATE TABLE scores (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    forecast_id        INTEGER NOT NULL UNIQUE REFERENCES forecasts(id),
+    brier              REAL,             -- NULL when the outcome is not scorable
+    scorable           INTEGER NOT NULL CHECK (scorable IN (0,1)),
+    exclusion_reason   TEXT,
+    computed_at        TEXT NOT NULL,
+    CHECK ((scorable = 1) = (brier IS NOT NULL)),
+    CHECK (scorable = 1 OR exclusion_reason IS NOT NULL)
+) STRICT;
