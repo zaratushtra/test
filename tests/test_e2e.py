@@ -430,11 +430,28 @@ def main() -> int:
        len(db_obs) == len(obs) and
        abs(scoring.brier(db_obs) - scoring.brier(obs)) < 1e-12,
        (scoring.brier(db_obs), scoring.brier(obs)))
+    unplanned = evaluate.evaluate(con, resamples=800)
+    ok("without a declared budget the gate will not fire, however good the data",
+       unplanned.blocked_by and "no evaluation plan" in unplanned.blocked_by,
+       unplanned.blocked_by)
+
+    evaluate.declare_plan(con, n_looks=10, declared_by="e2e",
+                          declared_at=iso(NOW + timedelta(days=60)))
     ev = evaluate.evaluate(con, resamples=800)
-    ok("the readout reproduces the gate decision", ev.gate_fires == ci.fires)
+    ok("with a plan the gate evaluates", ev.blocked_by is None, ev.blocked_by)
     ok("...and names the slice it averaged over",
        len(evaluate.slices(con)) == 1, evaluate.slices(con))
+
+    # The point of the whole sequential apparatus, on one record: a plain 95%
+    # bound fires, and the first of ten budgeted looks does not.
+    ok("the fixed 95% bound would have fired here", ci.fires, ci.lower)
+    ok("...and the first budgeted look does not, at z=%.2f" % ev.z_threshold,
+       not ev.gate_fires, ev.summary())
+    ok("an unrecorded look spends nothing",
+       evaluate.looks_taken(con, evaluate.plan_for(con)["id"]) == 0)
     print("        " + ev.summary().replace("\n", "\n        "))
+    print(f"        fixed 95% lower bound {ci.lower:+.4f} > 0 would have fired; "
+          f"look 1/10 demands z={ev.z_threshold:.2f}")
 
     # ---------------------------------------------------- decision
     print("\n[8] A decision under the close-only posture\n")

@@ -223,32 +223,114 @@ def main() -> int:
        sl)
     print(f"        slices: {sl}")
 
-    print("\n[4] The gate refuses to fire below twelve regimes\n")
+    print("\n[4] The gate needs a declared budget before it will fire\n")
+    unplanned = evaluate.evaluate(con3, resamples=800)
+    ok("with no plan the gate is NOT EVALUABLE, whatever the data says",
+       unplanned.blocked_by is not None and "no evaluation plan" in unplanned.blocked_by,
+       unplanned.blocked_by)
+    ok("...while the descriptive statistics are still reported",
+       unplanned.brier is not None and unplanned.bss is not None)
+    ok("...and it does not claim the gate fired", not unplanned.gate_fires)
+
+    ok("a plan with no named declarer is refused",
+       raises(lambda: evaluate.declare_plan(con3, n_looks=5, declared_by=" "),
+              EvaluationError))
+    ok("a plan with zero looks is refused",
+       raises(lambda: evaluate.declare_plan(con3, n_looks=0, declared_by="a"),
+              EvaluationError))
+    ok("an unknown spending function is refused",
+       raises(lambda: evaluate.declare_plan(con3, n_looks=5, declared_by="a",
+                                            spending="whatever"), Exception))
+
+    plan_id = evaluate.declare_plan(
+        con3, n_looks=10, declared_by="analyst-1",
+        note="weekly through the first quarter", declared_at=at(days=39))
+    ok("a plan declares", plan_id > 0)
+    ok("declaring a second plan for the same slice is refused",
+       raises(lambda: evaluate.declare_plan(con3, n_looks=50, declared_by="a"),
+              EvaluationError))
+    ok("a plan is immutable — raising the budget after a bad look is the failure "
+       "the budget exists to prevent",
+       raises(lambda: con3.execute(
+           "UPDATE evaluation_plans SET n_looks=99 WHERE id=?", (plan_id,)),
+           sqlite3.IntegrityError))
+    ok("a plan is never deleted",
+       raises(lambda: con3.execute("DELETE FROM evaluation_plans WHERE id=?",
+                                   (plan_id,)), sqlite3.IntegrityError))
+
     ev = evaluate.evaluate(con3, resamples=800)
-    ok("twelve regimes evaluates", ev.blocked_by is None, ev.blocked_by)
-    ok("a real edge fires the gate", ev.gate_fires, ev.summary())
-    ok("calibration is reported separately from skill",
-       len(evaluate.calibration(con3)) > 0)
+    ok("with a plan the gate evaluates", ev.blocked_by is None, ev.blocked_by)
+    ok("the threshold comes from the schedule, not from 1.96",
+       ev.z_threshold > 1.96, ev.z_threshold)
+    ok("an unrecorded look is marked as a dry run", not ev.recorded)
+    ok("...and spends nothing",
+       evaluate.looks_taken(con3, plan_id) == 0)
+    ok("the first O'Brien-Fleming look is severe, as it should be",
+       ev.look_index == 1 and ev.z_threshold > 3.0, ev.z_threshold)
     print("        " + ev.summary().replace("\n", "\n        "))
 
+    ev_rec = evaluate.evaluate(con3, resamples=800, record_look=True,
+                               looked_at=at(days=40))
+    ok("a recorded look is written down", evaluate.looks_taken(con3, plan_id) == 1)
+    ok("...and says so", ev_rec.recorded)
+    ok("the next look is index 2",
+       evaluate.evaluate(con3, resamples=800).look_index == 2)
+    ok("a look is append-only",
+       raises(lambda: con3.execute(
+           "UPDATE evaluation_looks SET fired=1 WHERE plan_id=?", (plan_id,)),
+           sqlite3.IntegrityError))
+    ok("deleting a look would un-spend alpha, and is refused",
+       raises(lambda: con3.execute("DELETE FROM evaluation_looks WHERE plan_id=?",
+                                   (plan_id,)), sqlite3.IntegrityError))
+    hist = evaluate.look_history(con3, plan_id)
+    ok("the look history records what was seen and what threshold applied",
+       len(hist) == 1 and hist[0]["z_threshold"] == ev_rec.z_threshold)
+
+    print("\n[4a] Spending the whole budget, and what it costs\n")
+    for _ in range(9):
+        evaluate.evaluate(con3, resamples=200, record_look=True, looked_at=at(days=41))
+    ok("ten looks exhaust a ten-look plan",
+       evaluate.looks_taken(con3, plan_id) == 10)
+    spent = evaluate.evaluate(con3, resamples=200)
+    ok("the eleventh is refused: the schedule is exhausted",
+       "exhausted" in (spent.blocked_by or ""), spent.blocked_by)
+    ok("the budget is enforced by the schema too, not only in code",
+       raises(lambda: con3.execute(
+           "INSERT INTO evaluation_looks(plan_id, look_index, looked_at, "
+           "n_observations, n_regimes, point, std_error, z_threshold, fired) "
+           "VALUES(?,11,?,1,1,0.0,0.0,1.0,1)", (plan_id, at(days=42))),
+           sqlite3.IntegrityError))
+    zs = [h["z_threshold"] for h in evaluate.look_history(con3, plan_id)]
+    ok("O'Brien-Fleming thresholds relax toward the final look",
+       zs[0] > zs[-1], (zs[0], zs[-1]))
+    ok("...and the last is still stricter than a nominal one-sided 1.645",
+       zs[-1] > 1.645, zs[-1])
+    print(f"        z thresholds: {' '.join(f'{z:.2f}' for z in zs)}")
+
+    print("\n[4b-i] Below twelve regimes, still refused\n")
     con4 = ledger.connect(":memory:", create=True)
     _, made4 = build(con4, n_regimes=4, per=10, seed=9)
     for pid, _, outcome in made4:
-        con4.execute(
-            "INSERT INTO resolutions(proposition_id, outcome, resolution_source, "
-            "resolved_at, recorded_at) VALUES(?,?,?,?,?)",
-            (pid, "resolved_yes" if outcome else "resolved_no", "m",
-             at(days=40), at(days=40)))
-    con4.commit()
+        evaluate.record_resolution(
+            con4, pid, "resolved_yes" if outcome else "resolved_no", "m",
+            resolved_at=at(days=40), recorded_at=at(days=40))
     evaluate.score_all(con4, as_of=at(days=40))
+    evaluate.declare_plan(con4, n_looks=10, declared_by="analyst-1")
     ev4 = evaluate.evaluate(con4, resamples=800)
     ok("four regimes reports descriptive statistics", ev4.brier is not None)
     ok("...and says the gate is NOT EVALUABLE rather than giving an interval",
        ev4.blocked_by is not None and ev4.ci_lower is None, ev4.blocked_by)
     ok("...and does not claim the gate fired", not ev4.gate_fires)
+    ok("a refused look spends nothing",
+       evaluate.looks_taken(con4, evaluate.plan_for(con4)["id"]) == 0)
     print("        " + ev4.summary().replace("\n", "\n        "))
     ok("an empty record evaluates to nothing, not to zero",
        evaluate.evaluate(ledger.connect(":memory:", create=True)).n == 0)
+    ok("calibration is reported separately from skill",
+       len(evaluate.calibration(con3)) > 0)
+    sl = evaluate.slices(con3)
+    ok("slices show what would be averaged over", len(sl) == 1 and sl[0]["n"] == 120,
+       sl)
 
     print("\n[4b] A non-canonical timestamp is refused where it is committed\n")
     from spine import ledger as L

@@ -12,7 +12,7 @@ has been demonstrated.
 
 **Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline** and **§10.2–§10.3 shadow execution** built (`docs/EVIDENCE-REPORT.md`, `docs/SHADOW-EXECUTION-REPORT.md`) — every
 layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
-not code. 561 checks across 11 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
+not code. 590 checks across 11 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -640,6 +640,23 @@ the gate is cheap, data accumulates, and someone looks. Alpha spending restores 
 O'Brien-Fleming gives 1.1% at 52 looks while keeping full power — and is the default because a false
 "it works" costs far more here than running the full schedule. **The number of looks is declared
 before the record starts**, since choosing it afterwards restores the freedom the schedule removes.
+
+**And this is now enforced, because the readout was committing the error itself.** The first
+`evaluate()` reported a gate verdict from a plain 95% bootstrap interval — fine once, and not fine
+on a schedule, which is exactly how `run_cycle.py` is meant to run. Every run was a look. The
+machinery to prevent it had existed since Phase 2 and nothing was wired to it.
+
+The gate now takes its threshold from a declared plan (`evaluation_plans`, immutable and
+undeletable, naming who declared it) and every look is recorded (`evaluation_looks`, append-only,
+capped at the declared count by trigger). Looks are free until recorded; recording one is a
+deliberate and irreversible act. **The gate does not evaluate at all for a slice with no plan** — so
+the number of looks cannot be chosen after seeing the data, because nothing can be seen until it is
+chosen.
+
+On one record, the whole argument: a fixed 95% lower bound of +0.1157 would have fired; look 1 of 10
+under O'Brien-Fleming demands z = 6.09 and does not. Thresholds relax across the schedule (6.09,
+4.23, 3.40, 2.95, 2.68, 2.52, 2.42, 2.35, 2.31, 2.28), the last still stricter than a nominal
+one-sided 1.645.
 
 **Ablations are the point.** Does adding verified signals improve anything? Does deduplication help?
 Does lineage weighting help? Does the evidence model beat the contemporaneous price? Without these

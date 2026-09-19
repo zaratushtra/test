@@ -54,6 +54,8 @@ def main() -> int:
                     help="register contracts but do not record books")
     ap.add_argument("--sweep", action="store_true",
                     help="also run every declared collection query")
+    ap.add_argument("--record-look", action="store_true",
+                    help="spend one of the budgeted evaluation looks (irreversible)")
     args = ap.parse_args()
 
     # ---------------------------------------------------------- reachability
@@ -220,8 +222,17 @@ def main() -> int:
         for row in sl[:6]:
             print(f"    {row['forecast_kind']:<20}{row['model_version']:<12}"
                   f"{row['event_family']:<24}n={row['n']:<6}regimes={row['regimes']}")
-        ev = evaluate.evaluate(con)
+        # A dry run by default: inspecting the record must not spend alpha.
+        # --record-look is the deliberate act of taking one of the budgeted
+        # looks, and it is irreversible.
+        ev = evaluate.evaluate(con, record_look=args.record_look)
         print("  " + ev.summary().replace("\n", "\n  "))
+        if ev.blocked_by and "no evaluation plan" in ev.blocked_by:
+            print("\n  Declare one before the record grows (docs/RUNNING.md):\n"
+                  "    evaluate.declare_plan(con, n_looks=..., declared_by='you')\n"
+                  "  The number of looks fixed after seeing the data is not a\n"
+                  "  budget, and phase1/sequential_peeking.py measured what that\n"
+                  "  costs: a weekly fixed-bound check turns a 3% gate into 19%.")
         div = evaluate.settlement_divergence(con)
         if div:
             print(f"  {len(div)} contract(s) settled against the research outcome — "

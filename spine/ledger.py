@@ -34,7 +34,8 @@ SCHEMA_PATH = os.path.join(
 #   3  shadow execution (section 9) and collection (section 10) tables
 #   4  canonical-timestamp CHECK constraints on every compared column
 #   5  resolutions revised not replaced; scores keyed by resolution revision
-SCHEMA_VERSION = 5
+#   6  declared evaluation plans and recorded looks (alpha spending)
+SCHEMA_VERSION = 6
 
 
 class LedgerError(RuntimeError):

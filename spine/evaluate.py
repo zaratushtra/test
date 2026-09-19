@@ -34,7 +34,7 @@ import sqlite3
 import statistics
 from dataclasses import dataclass, field
 
-from . import timeutil
+from . import sequential, timeutil
 from .scoring import (
     MIN_REGIMES,
     Observation,
@@ -415,6 +415,90 @@ def dependents(con: sqlite3.Connection, forecast_hash: str,
 # the readout
 # ---------------------------------------------------------------------------
 
+ALL_SLICES = "*"
+
+
+def slice_key(forecast_kind: str | None = None, model_version: str | None = None,
+              event_family: str | None = None) -> str:
+    """The identity of a slice, as an evaluation plan names it."""
+    if not any((forecast_kind, model_version, event_family)):
+        return ALL_SLICES
+    return "|".join((forecast_kind or "*", model_version or "*",
+                     event_family or "*"))
+
+
+def declare_plan(
+    con: sqlite3.Connection,
+    *,
+    n_looks: int,
+    declared_by: str,
+    alpha: float = 0.05,
+    spending: str = "obrien_fleming",
+    note: str | None = None,
+    declared_at: str | None = None,
+    **slice_filters,
+) -> int:
+    """
+    Declare how many times a slice may be looked at, before looking.
+
+    This is the decision §12 says must be made in advance, made enforceable. The
+    plan is immutable and undeletable by trigger: raising the budget after a
+    disappointing look is the exact failure the budget exists to prevent, and a
+    rule that relies on nobody doing it will fail the way Phase 1 measured.
+    """
+    if n_looks < 1:
+        raise EvaluationError("a plan needs at least one look")
+    if not declared_by.strip():
+        raise EvaluationError(
+            "a plan must name who declared it; an anonymous plan is a plan "
+            "nobody is accountable for")
+    sequential.schedule(n_looks, alpha, spending)   # validates spending/alpha
+    key = slice_key(**slice_filters)
+    if con.execute("SELECT 1 FROM evaluation_plans WHERE slice_key=?",
+                   (key,)).fetchone():
+        raise EvaluationError(
+            f"slice {key!r} already has a plan. It is immutable on purpose — "
+            "to test something else, declare a plan for a different slice")
+    cur = con.execute(
+        """INSERT INTO evaluation_plans
+           (slice_key, n_looks, alpha, spending, declared_at, declared_by, note)
+           VALUES (?,?,?,?,?,?,?)""",
+        (key, n_looks, alpha, spending,
+         timeutil.canonical(declared_at) if declared_at else _now(),
+         declared_by, note))
+    con.commit()
+    return cur.lastrowid
+
+
+def plan_for(con: sqlite3.Connection, **slice_filters) -> dict | None:
+    """The plan governing a slice, or None. Falls back to the whole-record plan."""
+    for key in (slice_key(**slice_filters), ALL_SLICES):
+        row = con.execute(
+            "SELECT id, slice_key, n_looks, alpha, spending, declared_at, "
+            "       declared_by, note FROM evaluation_plans WHERE slice_key=?",
+            (key,)).fetchone()
+        if row:
+            cols = ["id", "slice_key", "n_looks", "alpha", "spending",
+                    "declared_at", "declared_by", "note"]
+            return dict(zip(cols, row))
+    return None
+
+
+def looks_taken(con: sqlite3.Connection, plan_id: int) -> int:
+    return con.execute(
+        "SELECT COUNT(*) FROM evaluation_looks WHERE plan_id=?",
+        (plan_id,)).fetchone()[0]
+
+
+def look_history(con: sqlite3.Connection, plan_id: int) -> list[dict]:
+    cur = con.execute(
+        "SELECT look_index, looked_at, n_observations, n_regimes, point, "
+        "       std_error, z_threshold, fired FROM evaluation_looks "
+        "WHERE plan_id=? ORDER BY look_index", (plan_id,))
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
 @dataclass(frozen=True)
 class Evaluation:
     n: int
@@ -430,6 +514,11 @@ class Evaluation:
     ci_upper: float | None = None
     gate_fires: bool = False
     blocked_by: str | None = None
+    # Sequential testing state.
+    look_index: int | None = None
+    n_looks: int | None = None
+    z_threshold: float | None = None
+    recorded: bool = False
 
     def summary(self) -> str:
         if not self.n:
@@ -444,8 +533,12 @@ class Evaluation:
         if self.blocked_by:
             lines.append(f"gate: NOT EVALUABLE — {self.blocked_by}")
         else:
-            lines.append(f"gate: {'FIRES' if self.gate_fires else 'does not fire'} "
-                         f"[{self.ci_lower:+.4f}, {self.ci_upper:+.4f}]")
+            lines.append(
+                f"gate: {'FIRES' if self.gate_fires else 'does not fire'} at look "
+                f"{self.look_index}/{self.n_looks} "
+                f"(z={self.z_threshold:.2f}, point {self.ci_point:+.4f}, "
+                f"95% CI [{self.ci_lower:+.4f}, {self.ci_upper:+.4f}])"
+                + ("" if self.recorded else "  [DRY RUN — not recorded]"))
         return "\n".join(lines)
 
 
@@ -454,16 +547,27 @@ def evaluate(
     as_of: str | None = None,
     *,
     resamples: int = 2000,
+    record_look: bool = False,
+    looked_at: str | None = None,
     **filters,
 ) -> Evaluation:
     """
-    The whole readout for one slice of the record.
+    The readout for one slice, under a declared sequential schedule.
 
-    Below twelve regimes this reports the descriptive statistics and says the
-    gate is **not evaluable** — it does not report a narrower interval with a
-    caveat attached. Phase 1 measured a 43.5% false positive rate at one regime;
-    a number produced there is worse than no number, because a number gets
-    quoted and a refusal does not.
+    **The gate is not a fixed 95% bound.** It was, and that was wrong: running
+    this on any schedule makes every run a look, and `phase1/sequential_peeking.py`
+    measured a weekly fixed-bound check inflating a ~3% gate to 19.3% over a
+    year. The threshold now comes from the slice's alpha-spending schedule.
+
+    Three conditions block the gate rather than caveating it, each reported by
+    name: no declared plan, fewer than twelve regimes, and stale scores left by
+    an unprocessed resolution revision. Below twelve regimes Phase 1 measured a
+    43.5% false positive rate, and a number produced there is worse than none,
+    because a number gets quoted and a refusal does not.
+
+    `record_look=False` by default, so inspecting the record costs nothing. A
+    look only counts — and only spends alpha — when it is written down, which is
+    also the only way it can be audited later.
     """
     obs = observations(con, as_of, **filters)
     if not obs:
@@ -473,17 +577,61 @@ def evaluate(
     m = murphy(obs)
     n_regimes = len({o.regime_id for o in obs})
     r_b = estimate_r_between(obs) if n_regimes >= 2 else None
-
     base = dict(n=len(obs), n_regimes=n_regimes, brier=brier(obs), bss=bss(obs),
                 reliability=m["reliability"], resolution=m["resolution"],
                 r_between=r_b,
                 n_eff_ceiling=n_eff_ceiling(r_b) if r_b is not None else None)
+
+    stale = stale_scores(con)
+    if stale:
+        return Evaluation(**base, blocked_by=(
+            f"{len(stale)} forecast(s) scored against a superseded resolution "
+            "revision; run score_all() before evaluating"))
+
+    plan = plan_for(con, **filters)
+    if plan is None:
+        return Evaluation(**base, blocked_by=(
+            f"no evaluation plan declared for slice "
+            f"{slice_key(**filters)!r}. The number of looks must be fixed before "
+            "the record accumulates (declare_plan)"))
+
+    taken = looks_taken(con, plan["id"])
+    index = taken + 1
+    if index > plan["n_looks"]:
+        return Evaluation(**base, n_looks=plan["n_looks"], look_index=taken,
+                          blocked_by=(
+                              f"the schedule is exhausted: {taken} of "
+                              f"{plan['n_looks']} looks already taken"))
+
     try:
-        ci = regime_bootstrap_ci(obs, resamples=resamples)
+        ci = regime_bootstrap_ci(obs, resamples=resamples, alpha=plan["alpha"])
     except ScoringError as e:
-        return Evaluation(**base, blocked_by=str(e).split(".")[0])
+        return Evaluation(**base, n_looks=plan["n_looks"],
+                          blocked_by=str(e).split(".")[0])
+
+    look = sequential.schedule(plan["n_looks"], plan["alpha"],
+                               plan["spending"])[index - 1]
+    # The bootstrap interval gives the sampling spread; the schedule decides how
+    # far from zero the point must sit at THIS look.
+    std_error = (ci.upper - ci.lower) / (2 * 1.959963985)
+    fires = sequential.gate_fires(ci.point, std_error, look)
+
+    if record_look:
+        con.execute(
+            """INSERT INTO evaluation_looks
+               (plan_id, look_index, looked_at, n_observations, n_regimes,
+                point, std_error, z_threshold, fired)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (plan["id"], index,
+             timeutil.canonical(looked_at) if looked_at else _now(),
+             len(obs), n_regimes, ci.point, std_error, look.z_threshold,
+             1 if fires else 0))
+        con.commit()
+
     return Evaluation(**base, ci_point=ci.point, ci_lower=ci.lower,
-                      ci_upper=ci.upper, gate_fires=ci.fires)
+                      ci_upper=ci.upper, gate_fires=fires,
+                      look_index=index, n_looks=plan["n_looks"],
+                      z_threshold=look.z_threshold, recorded=record_look)
 
 
 def calibration(con: sqlite3.Connection, bins: int = 10, **filters) -> list[dict]:

@@ -1,7 +1,7 @@
 # Evaluation Report — closing the loop, and a timestamp bug
 
 **Date:** 19 Sep 2026
-**Status:** **Built and validated.** `spine/evaluate.py` and `spine/timeutil.py`; 61/61 in
+**Status:** **Built and validated.** `spine/evaluate.py` and `spine/timeutil.py`; 87/87 in
 `tests/test_evaluate.py`, 33/33 in `tests/test_timeutil.py`, plus 5 checks in the end-to-end run.
 **What it closes:** three tables the project defined and never populated — `scores`, `settlements`,
 `forecast_edges` — plus the step nobody had written: building observations *from the database*
@@ -89,10 +89,10 @@ Brier average across two model versions measures the mixture.
 
 ### The gate refuses rather than caveats
 
-Below twelve regimes, `evaluate()` reports the descriptive statistics and says **NOT EVALUABLE**. It
-does not return a narrower interval with a warning attached. Phase 1 measured a 43.5% false-positive
-rate at one regime — a number produced there is worse than no number, because a number gets quoted
-and a refusal does not.
+Three conditions block the gate **by name**, rather than attaching a warning to a number: no
+declared evaluation plan, fewer than twelve regimes, and stale scores left by an unprocessed
+resolution revision. Phase 1 measured a 43.5% false-positive rate at one regime — a number produced
+there is worse than no number, because a number gets quoted and a refusal does not.
 
 ---
 
@@ -117,6 +117,45 @@ Two forecasts can be scored almost identically and lose money at different times
 independently and blow up together. The schema was already built for this; nothing had used it.
 Tested directly: the same pair may cycle in the `loss` graph while being refused as a cycle in the
 `score` graph, so "these are correlated" is always a statement about *which* correlation.
+
+---
+
+## 4b. The readout was committing the error the project had measured
+
+The first version of `evaluate()` reported a gate verdict from a plain 95% bootstrap interval. That
+is fine once. It is not fine on a schedule — and `run_cycle.py` is designed to run on a schedule, so
+**every run was a look**. `phase1/sequential_peeking.py` had already measured what that costs: a
+weekly check of a fixed bound turns a ~3% gate into **19.3%** over a year.
+
+`spine/sequential.py` had existed since Phase 2 with the alpha-spending machinery in it. Nothing
+connected it to the thing that does the looking. The project had written the fix, measured the
+problem, documented both, and then built the readout the wrong way anyway.
+
+The gate now takes its threshold from a declared schedule:
+
+- **`evaluation_plans`** — one per slice, immutable and undeletable by trigger. Raising the budget
+  after a disappointing look is exactly the failure a budget exists to prevent, so the schema
+  refuses it rather than trusting that nobody will. A plan must name who declared it.
+- **`evaluation_looks`** — append-only, undeletable (deleting one would un-spend alpha already
+  spent), and capped at the declared count by a trigger, not only in code.
+- **Looks are free until recorded.** `evaluate()` is a dry run by default and says so; recording is
+  a deliberate, irreversible act.
+
+The effect, on the same record, is the whole argument in two lines:
+
+```
+fixed 95% lower bound +0.1157 > 0        would have fired
+look 1/10, O'Brien-Fleming, z = 6.09     does not fire
+```
+
+Thresholds across a ten-look schedule: **6.09, 4.23, 3.40, 2.95, 2.68, 2.52, 2.42, 2.35, 2.31,
+2.28** — severe early, relaxing toward the end, and the last still stricter than a nominal one-sided
+1.645. Early stopping becomes rare and meaningful; almost all power is preserved for the full
+schedule.
+
+This also converts one of the four outstanding human decisions from a note in a document into an
+enforced precondition. The number of looks cannot be chosen after seeing the data, because the gate
+will not evaluate at all until it has been chosen.
 
 ---
 
@@ -162,5 +201,8 @@ caught this, because the old test *asserted the buggy behaviour* as if it were a
 
 ## 7. Next
 
-1. **Gate `evaluate()` on an empty `stale_scores()`**, so a correction cannot be evaluated around.
+1. ~~Gate `evaluate()` on an empty `stale_scores()`.~~ Done — a correction can no longer be
+   evaluated around.
 2. **Real forecasts to score**, which needs the event-family decision and live data.
+3. **Choose `n_looks`.** The gate now refuses to evaluate until someone does, which is the right
+   failure mode but still a decision only a human can make.

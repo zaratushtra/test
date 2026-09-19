@@ -9,7 +9,7 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
-python3 run_tests.py        # 9 suites, 454 checks — run this first
+python3 run_tests.py        # 11 suites, 590 checks — run this first
 ```
 
 ## The one thing this project needs from you
@@ -50,6 +50,7 @@ Useful flags:
 | `--no-books` | register contracts only |
 | `--from-dir DIR` | replay saved JSON instead of fetching |
 | `--sweep` | also run every declared collection query |
+| `--record-look` | spend one of the budgeted evaluation looks (irreversible) |
 
 ## What a healthy run looks like
 
@@ -96,6 +97,37 @@ outcome. Retire a query by setting `retired_at` rather than deleting it.
 A failed fetch is recorded as a run with its reason. A gap in the record that looks like "no news
 that day" is worse than a logged failure, because the first is indistinguishable from evidence of
 quiet.
+
+## Declaring an evaluation budget
+
+`run_cycle.py` prints a gate verdict every time it runs — which makes every run a **look**, and
+`phase1/sequential_peeking.py` measured what unbudgeted looking costs: a weekly check of a fixed 95%
+bound turns a ~3% gate into **19.3%** over a year. No bad faith required; the gate is cheap and
+someone always looks.
+
+So the gate will not fire at all until a budget is declared:
+
+```python
+from spine import evaluate, ledger
+con = ledger.connect("spine.db")
+evaluate.declare_plan(con, n_looks=10, declared_by="your name",
+                      spending="obrien_fleming",
+                      note="weekly through the first quarter")
+```
+
+The plan is **immutable and undeletable**. Raising the budget after a disappointing look is exactly
+the failure it exists to prevent, so the schema refuses it rather than trusting nobody will.
+
+Looks are free until you record one. `run_cycle.py` runs a dry run by default and prints
+`[DRY RUN — not recorded]`; `--record-look` spends one, permanently.
+
+What the budget costs is visible immediately. On a record where a plain 95% bound fires at
+`[+0.118, +0.259]`, the first of ten O'Brien-Fleming looks demands **z = 6.09** and does not fire.
+The thresholds relax across the schedule — 6.09, 4.23, 3.40, 2.95, 2.68, 2.52, 2.42, 2.35, 2.31,
+2.28 — so an early stop is rare and meaningful, and almost all power is preserved for the end.
+
+Three things block the gate by name rather than caveating it: no declared plan, fewer than twelve
+regimes, and stale scores left by an unprocessed resolution revision.
 
 ## Schema versions
 
@@ -144,8 +176,9 @@ be shadowed honestly.
 
 None of these are code problems, and all of them get harder to answer once data starts accumulating:
 
-1. **The number of looks** in the sequential schedule (§12). Choosing it after seeing the data
-   reintroduces exactly the freedom alpha spending removes.
+1. ~~The number of looks in the sequential schedule.~~ Now **enforced**: the gate refuses to
+   evaluate without a declared plan, and the plan cannot be changed afterwards. You still have to
+   choose the number — see *Declaring an evaluation budget* above.
 2. **The regime rotation plan** — what actually varies across the twelve regimes. This decides
    whether the bootstrap means anything at all.
 3. **One or two event families** to start with, and their frozen selection rules.

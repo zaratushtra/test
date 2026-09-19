@@ -33,7 +33,7 @@ PRAGMA busy_timeout = 5000;
 -- which is how a query silently returns nothing and the absence gets read as
 -- evidence. Bump this whenever this file changes in a way that is not purely
 -- additive; ledger.SCHEMA_VERSION must match.
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
 
 -- ============================================================================
 -- CANONICAL TIMESTAMPS
@@ -675,3 +675,70 @@ CREATE TABLE item_provenance (
     run_id             INTEGER NOT NULL REFERENCES collection_runs(id),
     PRIMARY KEY (item_id, query_id, run_id)
 ) STRICT;
+
+-- ============================================================================
+-- 11. EVALUATION SCHEDULE
+-- Section 12, and phase1/sequential_peeking.py, which measured what ignoring it
+-- costs: checking a fixed 95% bound weekly for a year turns a ~3% gate into
+-- 19.3%, a six-fold inflation, with no bad faith required.
+--
+-- The evaluation readout was committing exactly that error -- every run printed
+-- a gate verdict from a plain 95% bootstrap interval, and running it on a
+-- schedule is the peeking the simulation measured. So the gate now requires a
+-- declared plan, and every look is recorded against it.
+--
+-- The number of looks must be DECLARED BEFORE the record accumulates. Choosing
+-- it afterwards, once the shape of the data is visible, reintroduces precisely
+-- the freedom the schedule removes -- so there is no way to evaluate a slice
+-- that has no plan, and no way to add a look beyond the declared budget.
+-- ============================================================================
+
+CREATE TABLE evaluation_plans (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Which slice this plan governs: 'kind|model_version|event_family', or '*'
+    -- for the whole record. One plan per slice; a second is a new plan for a
+    -- new slice, never a revision of this one.
+    slice_key          TEXT NOT NULL UNIQUE,
+    n_looks            INTEGER NOT NULL CHECK (n_looks >= 1),
+    alpha              REAL NOT NULL CHECK (alpha > 0.0 AND alpha < 1.0),
+    spending           TEXT NOT NULL CHECK (spending IN ('pocock','obrien_fleming')),
+    declared_at        TEXT NOT NULL CHECK (declared_at GLOB
+                         '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    declared_by        TEXT NOT NULL,
+    note               TEXT
+) STRICT;
+
+CREATE TRIGGER evaluation_plans_immutable BEFORE UPDATE ON evaluation_plans
+BEGIN SELECT RAISE(ABORT, 'an evaluation plan is immutable: changing the budget after looking is the error the plan exists to prevent'); END;
+
+CREATE TRIGGER evaluation_plans_no_delete BEFORE DELETE ON evaluation_plans
+BEGIN SELECT RAISE(ABORT, 'an evaluation plan is never deleted'); END;
+
+CREATE TABLE evaluation_looks (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id            INTEGER NOT NULL REFERENCES evaluation_plans(id),
+    look_index         INTEGER NOT NULL CHECK (look_index >= 1),
+    looked_at          TEXT NOT NULL CHECK (looked_at GLOB
+                         '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    n_observations     INTEGER NOT NULL CHECK (n_observations >= 0),
+    n_regimes          INTEGER NOT NULL CHECK (n_regimes >= 0),
+    point              REAL NOT NULL,
+    std_error          REAL NOT NULL CHECK (std_error >= 0.0),
+    z_threshold        REAL NOT NULL,
+    fired              INTEGER NOT NULL CHECK (fired IN (0,1)),
+    UNIQUE (plan_id, look_index)
+) STRICT;
+
+CREATE TRIGGER evaluation_looks_append_only BEFORE UPDATE ON evaluation_looks
+BEGIN SELECT RAISE(ABORT, 'a look is a fact about a moment; it is not revised'); END;
+
+CREATE TRIGGER evaluation_looks_no_delete BEFORE DELETE ON evaluation_looks
+BEGIN SELECT RAISE(ABORT, 'deleting a look would un-spend alpha that was already spent'); END;
+
+-- The budget is a hard limit, enforced here rather than in the caller.
+CREATE TRIGGER evaluation_looks_within_budget BEFORE INSERT ON evaluation_looks
+BEGIN
+    SELECT RAISE(ABORT, 'look exceeds the declared number of looks for this plan')
+    WHERE NEW.look_index > (SELECT n_looks FROM evaluation_plans
+                            WHERE id = NEW.plan_id);
+END;

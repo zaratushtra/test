@@ -15,7 +15,7 @@ prediction markets.
 | 2 · Narrow forecasting | **passed on fixtures** | 67/67 + 43/43 + 54/54 end-to-end. Scoring, decision, models, ablations and the contract registry are built and joined; only *live* market data is blocked on network access. See `docs/PHASE2-REPORT.md` |
 | — · Evidence pipeline | **built, fixtures only** | 68/68 `tests/test_evidence.py` — ingestion, deduplication, effective sources, claims, contradictions, influence budget. See `docs/EVIDENCE-REPORT.md` |
 | — · Shadow execution | **built, fixtures only** | 48/48 `tests/test_shadow.py` — recorded books, queue position, cancellation latency, adverse selection. See `docs/SHADOW-EXECUTION-REPORT.md` |
-| — · Evaluation loop | **built, fixtures only** | 61/61 `tests/test_evaluate.py` — scores, exclusions, settlement divergence, the dependence DAG. See `docs/EVALUATION-REPORT.md` |
+| — · Evaluation loop | **built, fixtures only** | 87/87 `tests/test_evaluate.py` — scores, exclusions, settlement divergence, the dependence DAG. See `docs/EVALUATION-REPORT.md` |
 | — · Signal collection | **built, fixtures only** | 42/42 `tests/test_collect.py` — predeclared anchored queries, RSS/Atom, hostile-input guards, provenance |
 | — · Venue access & cycle | **built, offline-validated** | 38/38 `tests/test_venue.py` — `run_cycle.py` runs the whole cycle in one command. See `docs/RUNNING.md` |
 | 3 · Prospective evaluation | blocked | Needs live data and calendar time: ≥12 regimes of pre-registered forecasts |
@@ -67,7 +67,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # all eleven suites, 561 checks
+python3 run_tests.py              # all eleven suites, 590 checks
 ```
 
 Individually:
