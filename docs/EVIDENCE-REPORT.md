@@ -162,7 +162,7 @@ without both.
 
 ## 6. What this does not establish
 
-- **Every number in §2.4's cap table is declared, not measured.** They encode a judgement about how
+- **Every number in the cap table above (§2.4 of this report) is declared, not measured.** They encode a judgement about how
   much a claim in a given verification state should be allowed to move a forecast. Nothing yet tests
   whether those levels are right.
 - **`ASSUMED_CORRELATION = 0.30` is a policy floor**, chosen to be non-zero rather than to be

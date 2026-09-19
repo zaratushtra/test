@@ -456,7 +456,7 @@ hash-committed and quietly reshaping a committed field would change what the cha
 
 ### 8.2 Feast does not do this for you
 
-v1 said Feast "implements §11.7 directly — do not hand-roll it." Overstated. Feast's own
+v1 said Feast "implements point-in-time joins directly — do not hand-roll it." Overstated. Feast's own
 documentation notes that by default it does **not** compare the created timestamp against the entity
 row's event timestamp, so a correction or backfill created *after* the lookup time can still be
 returned. `created_timestamp_column` must be configured explicitly and semantics vary by offline

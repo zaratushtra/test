@@ -1,5 +1,7 @@
 # SPINE Phase 0 — findings to date
 
+> **Section references in this document are to SPINE v1**, the design under review. v2 renumbered
+> extensively; `tests/test_docs.py` treats a document carrying this notice as historical.
 **Date:** 2026-09-19
 **Status:** Audit (a) coded and tested against fixtures, not yet run live. Audit (b)
 coded, not run. Audit (c) coded and tested. Audit (d) — PolyBench — **complete, and

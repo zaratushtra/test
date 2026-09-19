@@ -2,7 +2,7 @@
 """
 Phase 0(a) — Polymarket market screen and independence survey.
 
-Answers the gate question from SPINE §11.0: can the T1 universe supply enough
+Answers the gate question from SPINE §3.1: can the T1 universe supply enough
 *independent* markets per week to reach the n_eff target on an acceptable timeline?
 
 Raw market count is not the answer. Correlated markets contribute almost nothing:

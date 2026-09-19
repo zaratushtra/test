@@ -2,8 +2,8 @@
 """
 Phase 0 — vintage data coverage audit.
 
-SPINE §5.3 calibrates lambda on 2005-2024 using point-in-time data: the value as
-it was *first published*, not as later revised. Replaying today's revised series
+§8.1's availability-time discipline applied to *data series*: a calibration must
+use the value as it was **first published**, not as later revised. Replaying today's revised series
 against 2015 gives the model numbers nobody had in 2015, and every backtest comes
 out flattering and wrong.
 

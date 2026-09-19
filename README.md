@@ -80,9 +80,9 @@ python3 run_tests.py --docs       # and check what the documents claim
 ```
 
 The second one matters more than it sounds. These documents make specific,
-checkable assertions — suite counts, file layouts, schema versions, measured
-figures that are cited as reasons for design choices — and every one can quietly
-become false. A document that is confidently wrong is worse than one that says
+checkable assertions — suite counts, file layouts, schema versions, section
+cross-references, measured figures cited as reasons for design choices — and
+every one can quietly become false. A document that is confidently wrong is worse than one that says
 nothing, because it gets believed.
 
 Individually:

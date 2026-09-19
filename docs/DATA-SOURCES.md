@@ -85,7 +85,7 @@ If a script ever appears to need a key handed to it inline, that is a bug in the
 
 Losing NewsGuard removes an external reliability prior. That is survivable: the design already
 required source independence be *learned* from observed behaviour rather than taken from a vendor
-score, and §11.4.3's provenance-graph approach never depended on one.
+score, and §7.2's provenance-graph approach never depended on one.
 
 ---
 
@@ -110,7 +110,7 @@ against the public Gamma endpoints needs no client at all.
 If an LLM is used for claim extraction or Stage 3 assistance, a locally hosted open-weights model
 satisfies the constraint and has an additional benefit the design cares about: the prompt, model
 version and raw output can all be captured in the forecast manifest without depending on a hosted
-endpoint that may drift or retire. §5.6's reproducibility exception exists precisely because hosted
+endpoint that may drift or retire. §12's reproducibility criterion is auditable rather than re-runnable precisely because hosted
 inference cannot be pinned; local weights partly close that gap.
 
 Whatever is used, it is typed `llm_assisted` in the schema and reported as a separate stratum in

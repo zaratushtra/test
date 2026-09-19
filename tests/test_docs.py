@@ -152,6 +152,43 @@ def main() -> int:
        "Paper only" in readme or "paper only" in readme.lower())
 
     # ---------------------------------------------------- measured figures
+    print("\n[6b] Every section reference points at a section that exists\n")
+    # A reference by number survives a rewrite looking exactly as authoritative
+    # as it did before. Three in this repo pointed at v1 section numbers, which
+    # in v2 mean entirely different things -- and nothing could see it, because
+    # they were in code comments rather than prose.
+    heads = {m.group(1) for m in
+             re.finditer(r"^#{2,4}\s+(\d+[a-z]?(?:\.\d+)?)\.?\s", design,
+                         re.MULTILINE)}
+    ok("the design has numbered sections to check against", len(heads) > 20,
+       len(heads))
+
+    dangling = {}
+    for path in sorted(
+            list(__import__("pathlib").Path(ROOT).rglob("*.py")) +
+            list(__import__("pathlib").Path(ROOT).rglob("*.md"))):
+        sp = str(path)
+        if "__pycache__" in sp or "/docs/history/" in sp:
+            continue
+        text = path.read_text(encoding="utf-8")
+        # A document about v1 legitimately cites v1 numbers -- but it has to say
+        # so, because an unlabelled section number is exactly as ambiguous to a
+        # reader as it is to this check.
+        if "Section references in this document are to SPINE v1" in text:
+            continue
+        # A reference resolves against the design's sections OR the document's
+        # own -- a report citing its own section 2.4 is not a dangling link.
+        own = {m.group(1) for m in
+               re.finditer(r"^#{2,4}\s+(\d+[a-z]?(?:\.\d+)?)\.?\s", text,
+                           re.MULTILINE)}
+        refs = set(re.findall(r"§(\d+(?:\.\d+)?)", text))
+        bad = sorted(refs - heads - own)
+        if bad:
+            dangling[os.path.relpath(sp, ROOT)] = bad
+    ok("no file references a section the design does not have", not dangling,
+       dangling)
+    print(f"        checked {len(heads)} sections across the repo")
+
     print("\n[7] Figures the documents quote as measured\n")
     # These are load-bearing: every one is cited as a reason for a design choice.
     for doc, name, figure in (

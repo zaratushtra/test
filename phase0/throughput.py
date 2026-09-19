@@ -2,14 +2,21 @@
 """
 Phase 0(c) — throughput pilot harness.
 
-SPINE §5.4 identifies Stage 3 (payoff matrices, best-response checks) as the
-per-forecast bottleneck, and §2.3 requires on the order of 250 *independent*
-forecasts. If a forecast costs four analyst-hours, that is a thousand hours
-before the resolution horizon is even reached. Nobody has measured it.
+**Section numbers here were v1's and are corrected to v2's.** The three this
+file originally cited now point at conditional probability, gate zero and
+verification instead — a reminder that a reference by number survives a rewrite
+looking exactly as authoritative as it did before. The check in
+tests/test_docs.py exists so the next one is caught rather than read.
+
+The substance stands. §3.1 requires `n_eff ≳ 31.4 / BSS` independent forecasts —
+**314 at BSS = 0.10**, not the 250 this file used to claim, which predates the
+coefficient correction. If a forecast costs four analyst-hours that is well over
+a thousand hours before the resolution horizon is even reached, and nobody has
+measured the per-forecast cost.
 
 This times each stage for manually produced forecasts and projects the implied
 Register A timeline. Run it for five forecasts; the answer decides whether the
-roadmap in §7 is real.
+roadmap in §13 is real.
 
     python throughput.py time --market-id 0x123 --question "..."   # interactive
     python throughput.py report
@@ -29,11 +36,13 @@ from datetime import datetime, timezone
 
 STAGES = [
     ("stage0_admission", "Stage 0 — write event, resolution criterion, deadline; run the checklist"),
-    ("stage1_base_rate", "Stage 1 — define and freeze the reference class, count members"),
+    ("stage1_base_rate", "Stage 1 — freeze the reference class (spine/refclass.freeze)"),
     ("stage2_pressure", "Stage 2 — assemble indicators (skip for T1)"),
     ("stage3_incentive", "Stage 3 — actors, payoff orderings, best-response check"),
     ("stage4_dag", "Stage 4 — locate in the DAG, estimate correlations with siblings"),
-    ("stage5_record", "Stage 5 — final probability, firewall check, record"),
+    # The firewall this stage used to check was removed in v2 §5.1: it capped
+    # the probability of an event rather than confidence in the estimate.
+    ("stage5_record", "Stage 5 — final probability, interval, record"),
 ]
 
 LOG = "out/throughput_log.jsonl"
@@ -129,7 +138,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     stage3 = statistics.median([r["durations_sec"].get("stage3_incentive", 0)
                                 for r in records])
     if median_total and stage3 / median_total > 0.4:
-        print(f"\n  Stage 3 is {stage3/median_total*100:.0f}% of the cost, as §5.4 predicted.\n"
+        print(f"\n  Stage 3 is {stage3/median_total*100:.0f}% of the cost.\n"
               "  It is the highest-leverage automation target in the project.")
     return 0
 

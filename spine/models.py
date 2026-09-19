@@ -323,7 +323,7 @@ def departure_from_market_bp(f: Forecast) -> int:
 
     The quantity to watch in ablations: if it is near zero across the board, the
     evidence layer is adding nothing the price did not already contain, and that
-    is the most likely scientific failure mode (§15.4).
+    is the most likely scientific failure mode (§15, item 4).
     """
     if f.kind != "market_conditioned":
         raise ModelError("departure is only defined for market-conditioned forecasts")

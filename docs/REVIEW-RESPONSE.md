@@ -1,5 +1,7 @@
 # Response to SPINE Design Review (19 Sep 2026)
 
+> **Section references in this document are to SPINE v1**, the design under review. v2 renumbered
+> extensively; `tests/test_docs.py` treats a document carrying this notice as historical.
 I independently reproduced the database probes, re-derived the contested statistics, and checked
 the three external claims. **The review is right on essentially everything material.** Four of its
 findings invalidate things I stated with more confidence than I had earned, and one of them — the
