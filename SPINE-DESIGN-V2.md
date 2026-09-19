@@ -5,8 +5,8 @@
 parts of v1. Disposition of all 27 findings: `REVIEW-RESPONSE.md`.
 
 **Nature.** A design document with implementation underway. `db/schema_v2.sql` (36/36), the `spine/`
-ledger (33/33) and the scoring and decision layers (47/47) are real and tested; the rest is
-specification.
+ledger (33/33), the scoring and decision layers (67/67) and the models and ablation harness (43/43)
+are real and tested; the rest is specification.
 No forecast has been made, nothing has been benchmarked, and no accuracy or profitability advantage
 has been demonstrated.
 

@@ -48,6 +48,7 @@ class Observation:
     outcome: int        # 1 or 0
     p_base: float       # benchmark the skill score is measured against
     regime_id: str
+    key: str = ""       # contract/question identity, for paired comparison
 
     def brier(self) -> float:
         return (self.p - self.outcome) ** 2
@@ -91,6 +92,7 @@ def to_observations(rows: list[dict]) -> list[Observation]:
                 outcome=1 if r["outcome"] == "resolved_yes" else 0,
                 p_base=r["p_base_bp"] / 10000.0,
                 regime_id=r["regime_id"],
+                key=str(r.get("key", r.get("forecast_hash", ""))),
             )
         )
     return out
