@@ -93,6 +93,28 @@ def main() -> int:
        venue.parse_book({"bids": [{"price": "1.0", "size": "10"},
                                   {"price": "0", "size": "10"}],
                          "asks": []})[0] == [])
+    print("\n[2b] Rounding must not land on an endpoint\n")
+    edge = venue.parse_book({"bids": [{"price": "0.00005", "size": "1000"}],
+                             "asks": [{"price": "0.99995", "size": "1000"}]})
+    ok("a price rounding to 0 is clamped to 1bp", edge[0][0][0] == 1, edge[0])
+    ok("a price rounding to 1.0 is clamped to 9999bp", edge[1][0][0] == 9999,
+       edge[1])
+    ok("...because every price invariant here is the OPEN interval",
+       0 < edge[0][0][0] < 10000 and 0 < edge[1][0][0] < 10000)
+    # The concrete consequence: without the clamp, the decision table refuses to
+    # store an acquisition price derived from such a book.
+    con0 = ledger.connect(":memory:", create=True)
+    registry.ingest_markets(con0, [{"id": "m", "question": "q",
+                                    "end_date": "2026-12-01T00:00:00Z",
+                                    "rules_text": "r", "outcome_token_id": "t"}],
+                            jurisdiction="GB")
+    sid = shadow.record_book(con0, 1, edge[0], edge[1],
+                             captured_at="2026-09-19T00:00:00.000Z",
+                             source="fixture")
+    bk = shadow.load_book(con0, sid)
+    ok("a near-certain book still yields a storable acquisition price",
+       0 < shadow.aggressive_fill(bk, "YES", 100.0, 9999).avg_price_bp < 10000)
+
     ok("a book request with no token is refused",
        raises(lambda: venue.fetch_book(""), VenueError))
 

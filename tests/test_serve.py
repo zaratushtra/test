@@ -184,6 +184,30 @@ def main() -> int:
         ok("the heartbeat is valid JSON every time it is read",
            isinstance(json.load(open(hb, encoding="utf-8")), dict))
 
+        print("\n[6b] The heartbeat never kills the loop\n")
+        nested = os.path.join(d, "does", "not", "exist", "health.json")
+        p8 = serve("--interval", "0.05", "--max-passes", "1", "--quiet",
+                   "--heartbeat", nested, *cycle)
+        out8, err8 = p8.communicate(timeout=120)
+        ok("a heartbeat path in a missing directory does not crash the process",
+           p8.returncode == 0, err8[-400:])
+        ok("...the directory is created instead", os.path.exists(nested))
+
+        # A path whose parent is a FILE, not a directory. Unlike chmod, this
+        # fails for root too, so the check does not quietly pass depending on
+        # who the test runs as -- which is how it first appeared to pass.
+        blocker = os.path.join(d, "blocker")
+        with open(blocker, "w", encoding="utf-8") as fh:
+            fh.write("not a directory")
+        p9 = serve("--interval", "0.05", "--max-passes", "1", "--quiet",
+                   "--heartbeat", os.path.join(blocker, "h.json"), *cycle)
+        out9, err9 = p9.communicate(timeout=120)
+        ok("an unwritable heartbeat is reported, not fatal",
+           p9.returncode == 0 and "could not write heartbeat" in err9,
+           (p9.returncode, err9[-300:]))
+        ok("...and the pass still ran", "pass 1" in out9 or "reached 1" in out9,
+           out9[-200:])
+
         print("\n[7] There is no secret handling, by construction\n")
         src = open(os.path.join(ROOT, "serve.py"), encoding="utf-8").read()
         dockerfile = open(os.path.join(ROOT, "Dockerfile"), encoding="utf-8").read()

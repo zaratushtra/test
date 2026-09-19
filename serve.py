@@ -65,13 +65,26 @@ def now() -> str:
 
 
 def write_heartbeat(path: str, **fields) -> None:
-    """Atomic: write beside, then rename. A half-written heartbeat reads as healthy."""
+    """
+    Atomic: write beside, then rename. A half-written heartbeat reads as healthy.
+
+    Never raises. The heartbeat is observability, not the work — a process that
+    died because it could not report its health would be reporting its health by
+    dying, which is the least useful moment to fail. A write problem is printed
+    once per pass and the loop continues.
+    """
     if not path:
         return
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump({"at": now(), **fields}, fh, indent=2)
-    os.replace(tmp, path)
+    try:
+        parent = os.path.dirname(os.path.abspath(path))
+        os.makedirs(parent, exist_ok=True)
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"at": now(), **fields}, fh, indent=2)
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"[serve] could not write heartbeat to {path}: {e}",
+              file=sys.stderr, flush=True)
 
 
 def run_pass(args: list[str], timeout: float) -> tuple[int, str]:

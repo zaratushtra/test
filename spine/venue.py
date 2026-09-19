@@ -177,7 +177,16 @@ def parse_book(payload: dict) -> tuple[list[tuple[int, float]], list[tuple[int, 
                 raise VenueError(f"unparseable {key} level {lvl!r}") from e
             if shares <= 0 or not (0.0 < price < 1.0):
                 continue
-            out.append((round(price * 10000), shares * price))
+            # Clamped to the OPEN basis-point interval, not just rounded. A
+            # price of 0.99995 is strictly inside (0,1) and passes the filter
+            # above, but round(9999.5) is 10000 -- an endpoint every invariant
+            # in this project forbids (p_est_bp, expected_acquisition_bp and the
+            # rest are all `> 0 AND < 10000`). Without this, a near-certain
+            # market produces a book whose derived acquisition price the
+            # decision table refuses to store, so the pipeline fails on exactly
+            # the markets where the answer is least in doubt.
+            price_bp = max(1, min(9999, round(price * 10000)))
+            out.append((price_bp, shares * price))
         return out
 
     return side("bids"), side("asks")

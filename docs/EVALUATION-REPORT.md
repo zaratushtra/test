@@ -199,9 +199,11 @@ caught this, because the old test *asserted the buggy behaviour* as if it were a
 
 ---
 
-## 6b. Two bugs found reviewing this work afterwards
+## 6b. Four bugs found reviewing this session's own work
 
-Both were in code written in this session and passing its own tests.
+All four were in code written in this session and passing its own tests. Three would have appeared
+only in specific conditions — a customised alpha, a near-certain market, a fresh volume — which is
+the kind that survives a test suite written by the same person on the same afternoon.
 
 **The budget alpha was being used as the interval alpha.** `evaluate()` passed the plan's `alpha`
 to `regime_bootstrap_ci()` and then divided the resulting width by 1.96 to recover a standard
@@ -211,6 +213,19 @@ Sharing the parameter narrows the interval, so the standard error comes out unde
 at alpha = 0.20** — which makes the gate *easier* to fire. It is invisible at the default
 alpha = 0.05, so it would have sat there for exactly the person who customised the budget. The
 interval is now always 95%; the schedule owns alpha alone.
+
+**Book prices could round onto an endpoint.** `parse_book()` filtered prices to the open interval
+`0 < p < 1` and then rounded to basis points — but `round(0.99995 * 10000)` is `10000`, an endpoint
+every invariant in this project forbids (`p_est_bp`, `expected_acquisition_bp` and the rest are all
+`> 0 AND < 10000`). The consequence was specific: on a near-certain market, the decision table would
+refuse to store the acquisition price derived from the book, so the pipeline failed on exactly the
+markets where the answer was least in doubt. Now clamped to `[1, 9999]`.
+
+**A heartbeat could kill the collector.** `serve.py` wrote its heartbeat without creating the parent
+directory and without catching write errors, so a path in a directory that did not yet exist — a
+fresh container volume — crashed the process at startup, before any work. A process that dies
+because it cannot report its health is reporting its health by dying, at the least useful possible
+moment. The write now creates its directory, never raises, and reports the problem once per pass.
 
 **Empty signal items all shared one content hash.** A feed entry with a guid but no title and no
 description produces empty text, and `content_hash({"body": ""})` is the same for every one of
