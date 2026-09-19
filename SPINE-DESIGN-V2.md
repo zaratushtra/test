@@ -12,7 +12,7 @@ has been demonstrated.
 
 **Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline** and **§10.2–§10.3 shadow execution** built (`docs/EVIDENCE-REPORT.md`, `docs/SHADOW-EXECUTION-REPORT.md`) — every
 layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
-not code. 366 checks across 7 suites (`python3 run_tests.py`).
+not code. 406 checks across 8 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -650,6 +650,11 @@ the terminal phase: it answers P3 and the programme concludes with a finding, no
 
 **Constraint: free and open-source only.** Full table with verified access terms in
 `docs/DATA-SOURCES.md`.
+
+Implemented in `spine/venue.py` and driven by `run_cycle.py`, which screens the universe, registers
+contracts and records books in one command. The client has **no authentication path at all** — no
+header, no key handling, no signing — and a test asserts it, so the paper-only posture is a property
+of the code rather than a promise about how it is used.
 
 The material point for the roadmap: **Phase 0's critical path requires no registration whatsoever.**
 The Polymarket Gamma API and the CLOB *read* endpoints are public — no key, no account, no wallet —

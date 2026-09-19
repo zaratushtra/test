@@ -1,0 +1,107 @@
+# Running SPINE
+
+Everything below is **read-only against the venue**. There is no authentication path in this
+codebase — `tests/test_venue.py` asserts that the venue client contains no `Authorization` header,
+no key handling and no signing code — so no account, wallet or KYC is involved at any point.
+
+## Requirements
+
+Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
+
+```bash
+python3 run_tests.py        # 8 suites, 406 checks — run this first
+```
+
+## The one thing this project needs from you
+
+The build sandbox has no route to the venue. From any machine with outbound HTTPS:
+
+```bash
+python3 run_cycle.py --check
+```
+
+Expected on a networked host:
+
+```
+  gamma: ok   clob: ok
+```
+
+If that passes, the full cycle is one command:
+
+```bash
+python3 run_cycle.py --jurisdiction GB --db spine.db --save-dir saved/
+```
+
+It screens the market universe, registers contracts, and records an order book for each. `--save-dir`
+writes the raw Gamma response so the run can be replayed later — including back in an offline
+environment:
+
+```bash
+python3 run_cycle.py --from-dir saved/ --db spine.db --jurisdiction GB
+```
+
+Useful flags:
+
+| flag | effect |
+|---|---|
+| `--check` | probe reachability and exit |
+| `--zones T1,T2` | which horizon zones to register (default both) |
+| `--limit N` | markets to fetch (default 3000) |
+| `--no-books` | register contracts only |
+| `--from-dir DIR` | replay saved JSON instead of fetching |
+
+## What a healthy run looks like
+
+```
+  zones: T1=142  T2=310  T3_structural=8  excluded=2540
+  selected 452 in ['T1', 'T2']
+  452 screened, 452 new, 0 already registered, 0 skipped
+  registry now holds 452 contracts: 452 close_only
+  recorded 448 book snapshots, 4 skipped
+  spread: median 240bp, min 100bp, max 1800bp (over 441 two-sided books)
+```
+
+Re-running is safe and idempotent on contracts: a market already registered under the same rules
+version is not registered again. Books are *not* idempotent, by design — a later capture is new
+data, and building the time series is the point.
+
+## Things that mean something is wrong
+
+**`only N/M selected markets carry resolution text`** — Gamma renamed a field. Run
+`python3 phase0/screen_markets.py --dump-schema` and fix `FIELD_CANDIDATES` in
+`phase0/screen_markets.py`. The registry refuses a market with no settlement rules rather than
+inventing one, so a stale key list shows up as mass skipping, not as bad data.
+
+**`crossed book`** — best bid at or above best ask. The two sides were read at different moments or
+the feed is malformed. These are refused at the storage layer; a handful is normal, a majority is a
+feed problem.
+
+**`reachable but errored`** on `--check` — the endpoint responded and the response was wrong. That is
+a venue change, not a network problem, and the two need different responses from you.
+
+## Building the record
+
+Shadow execution needs a **history** of books, so `run_cycle.py` is meant to run on a schedule —
+hourly is a reasonable start, and the right interval depends on how fast the markets you care about
+move. Something like:
+
+```
+0 * * * *  cd /path/to/spine && python3 run_cycle.py --jurisdiction GB --db spine.db >> cycle.log 2>&1
+```
+
+**Passive fill modelling additionally needs the CLOB trades channel**, which this module does not yet
+read. Depth changes alone cannot distinguish a fill from a cancellation
+(`docs/SHADOW-EXECUTION-REPORT.md` §2), so until trades are collected, only aggressive execution can
+be shadowed honestly.
+
+## What is still owed by a human
+
+None of these are code problems, and all of them get harder to answer once data starts accumulating:
+
+1. **The number of looks** in the sequential schedule (§12). Choosing it after seeing the data
+   reintroduces exactly the freedom alpha spending removes.
+2. **The regime rotation plan** — what actually varies across the twelve regimes. This decides
+   whether the bootstrap means anything at all.
+3. **One or two event families** to start with, and their frozen selection rules.
+4. **`min_width_bp` per horizon class**, and the influence caps in `spine/evidence.py`. Both are
+   currently declared policy rather than anything measured.
