@@ -33,7 +33,26 @@ PRAGMA busy_timeout = 5000;
 -- which is how a query silently returns nothing and the absence gets read as
 -- evidence. Bump this whenever this file changes in a way that is not purely
 -- additive; ledger.SCHEMA_VERSION must match.
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
+
+-- ============================================================================
+-- CANONICAL TIMESTAMPS
+--
+-- Every point-in-time query here is a STRING comparison. That is correct for
+-- exactly as long as every timestamp has the same shape -- and it did not:
+-- datetime.isoformat() drops the fractional part on a whole second, so a row
+-- written at 13:00:00Z compares GREATER than a cutoff of 13:00:00.000Z, because
+-- '.' (0x2E) sorts before 'Z' (0x5A). A forecast recorded at an instant was
+-- invisible to a retrieval at that same instant.
+--
+-- So every column that gets compared carries a GLOB check. Timestamps that are
+-- merely recorded -- a venue's or a source's own claim about itself -- are left
+-- free: those are evidence about the outside world, and forcing them into our
+-- shape would be rewriting what the source said.
+--
+--   canonical form: YYYY-MM-DDTHH:MM:SS.sssZ  (UTC, milliseconds, always Z)
+-- ============================================================================
+
 
 -- ============================================================================
 -- 1. EVIDENCE LAYER
@@ -62,7 +81,7 @@ CREATE TABLE source_error_correlation (
                          ('shared_upstream','ownership','syndication','co_publication',
                           'observed_error_agreement','assumed')),
     n_observations     INTEGER NOT NULL CHECK (n_observations >= 0),
-    computed_at        TEXT NOT NULL,     -- point-in-time: never applied retroactively
+    computed_at            TEXT NOT NULL CHECK (computed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),   -- point-in-time: never applied retroactively
     PRIMARY KEY (source_a, source_b, computed_at),
     CHECK (source_a < source_b)
 ) STRICT;
@@ -75,9 +94,9 @@ CREATE TABLE signal_items (
     -- The five times. Only the last one governs retrieval.
     event_at                 TEXT,        -- when the underlying event occurred
     claimed_published_at     TEXT,        -- the source's own claim; a claim, not a fact
-    first_seen_at            TEXT NOT NULL,   -- our collector observed it
+    first_seen_at          TEXT NOT NULL CHECK (first_seen_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),   -- our collector observed it
     artifact_created_at      TEXT NOT NULL,   -- this row/version was created
-    available_for_decision_at TEXT NOT NULL,  -- usable by a decision at or after this
+    available_for_decision_at TEXT NOT NULL CHECK (available_for_decision_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),   -- usable by a decision at or after this
     title                    TEXT,
     body_ref                 TEXT,
     item_class               TEXT NOT NULL CHECK (item_class IN
@@ -125,8 +144,8 @@ CREATE TABLE claims (
                          ('underlying_fact','only_that_it_was_asserted','indeterminate')),
     primary_artifact_id INTEGER REFERENCES signal_items(id),
     n_eff_sources      REAL NOT NULL CHECK (n_eff_sources > 0),
-    available_for_decision_at TEXT NOT NULL,
-    computed_at        TEXT NOT NULL,
+    available_for_decision_at TEXT NOT NULL CHECK (available_for_decision_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    computed_at            TEXT NOT NULL CHECK (computed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
     feature_version    TEXT NOT NULL,
     FOREIGN KEY (cluster_id, cluster_version)
         REFERENCES event_clusters(cluster_id, cluster_version)
@@ -147,7 +166,7 @@ CREATE TABLE claim_contradictions (
     adjudication       TEXT,
     adjudicator        TEXT,
     adjudicated_at     TEXT,
-    detected_at        TEXT NOT NULL,
+    detected_at            TEXT NOT NULL CHECK (detected_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
     CHECK (claim_a <> claim_b)
 ) STRICT;
 
@@ -215,7 +234,7 @@ CREATE TABLE reference_class_versions (
     -- Exposure semantics: "X happens by D" needs a denominator, not just events.
     exposure_window_days INTEGER,
     censoring_note     TEXT,
-    frozen_at          TEXT NOT NULL,
+    frozen_at              TEXT NOT NULL CHECK (frozen_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
     selection_rule_ref TEXT NOT NULL,   -- predeclared rule; a timestamp alone proves nothing
     UNIQUE (class_name, version)
 ) STRICT;
@@ -258,8 +277,8 @@ CREATE TABLE claim_contract_effects (
     -- The influence budget binds the FINAL contribution, not the raw llr.
     final_contribution  REAL NOT NULL,
     contribution_cap    REAL NOT NULL CHECK (contribution_cap > 0),
-    available_for_decision_at TEXT NOT NULL,
-    computed_at         TEXT NOT NULL,
+    available_for_decision_at TEXT NOT NULL CHECK (available_for_decision_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    computed_at            TEXT NOT NULL CHECK (computed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
     CHECK (abs(final_contribution) <= contribution_cap),
     -- horizon_days belongs in the key: one fact moves "floor vote this month"
     -- and "law this year" by different amounts (v2 section 6), so the two are
@@ -323,8 +342,8 @@ CREATE TABLE forecasts (
     -- intervals up to 10x too narrow; scoring MUST group by this.
     regime_id              TEXT NOT NULL,
 
-    created_at             TEXT NOT NULL,
-    label_available_at     TEXT,          -- when the outcome became knowable
+    created_at             TEXT NOT NULL CHECK (created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    label_available_at     TEXT CHECK (label_available_at IS NULL OR label_available_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),   -- when the outcome became knowable
     source                 TEXT NOT NULL CHECK (source IN ('human','llm_assisted','model')),
     source_detail          TEXT,
 
@@ -473,7 +492,7 @@ CREATE TABLE scores (
     brier              REAL,             -- NULL when the outcome is not scorable
     scorable           INTEGER NOT NULL CHECK (scorable IN (0,1)),
     exclusion_reason   TEXT,
-    computed_at        TEXT NOT NULL,
+    computed_at            TEXT NOT NULL CHECK (computed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
     CHECK ((scorable = 1) = (brier IS NOT NULL)),
     CHECK (scorable = 1 OR exclusion_reason IS NOT NULL)
 ) STRICT;
@@ -495,8 +514,8 @@ CREATE TABLE book_snapshots (
     -- Same discipline as signal_items: the venue's own timestamp is a claim,
     -- captured_at is when we saw it, and only the third governs retrieval.
     venue_timestamp    TEXT,
-    captured_at        TEXT NOT NULL,
-    available_for_decision_at TEXT NOT NULL,
+    captured_at            TEXT NOT NULL CHECK (captured_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    available_for_decision_at TEXT NOT NULL CHECK (available_for_decision_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
     bids               TEXT NOT NULL,     -- JSON [[price_bp,size_usd],...] best first
     asks               TEXT NOT NULL,
     source             TEXT NOT NULL CHECK (source IN
@@ -589,8 +608,8 @@ CREATE TABLE collection_queries (
     query_text         TEXT,             -- terms, where the feed takes them
     -- Predeclared, like a reference class: a query written after seeing which
     -- articles would have helped is a selection rule fitted to the outcome.
-    declared_at        TEXT NOT NULL,
-    retired_at         TEXT,
+    declared_at            TEXT NOT NULL CHECK (declared_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    retired_at             TEXT CHECK (retired_at IS NULL OR retired_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
     note               TEXT,
     UNIQUE (proposition_id, source_id, feed_url, query_text, declared_at)
 ) STRICT;

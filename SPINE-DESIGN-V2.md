@@ -12,7 +12,7 @@ has been demonstrated.
 
 **Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline** and **§10.2–§10.3 shadow execution** built (`docs/EVIDENCE-REPORT.md`, `docs/SHADOW-EXECUTION-REPORT.md`) — every
 layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
-not code. 454 checks across 9 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
+not code. 542 checks across 11 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -413,6 +413,20 @@ everything on `first_seen_at`, which is wrong.
 Only the last governs retrieval, and it applies to *derived* features too — cluster assignments and
 source-reliability estimates included. Source reliability learned from outcomes and applied
 retroactively leaks outcome information backwards; scores are themselves point-in-time.
+
+**And every one of those retrievals is a string comparison, so the format is part of the
+correctness.** `datetime.isoformat()` omits the fractional part on a whole second, and `'.'` (0x2E)
+sorts before `'Z'` (0x5A), so `'2026-09-19T13:00:00Z'` compares **greater** than
+`'2026-09-19T13:00:00.000Z'` — the same instant. A forecast written the first way was invisible to a
+decision made at that instant: wrong by a format rather than by an interval, silently, and only for
+the rows that landed on a round number.
+
+The canonical form is `YYYY-MM-DDTHH:MM:SS.sssZ`, produced by `spine/timeutil.py`, enforced by
+`CHECK ... GLOB` on every column that is compared. Timestamps that are *merely recorded* — a
+source's `claimed_published_at`, a venue's own stamp — are left free-form on purpose: those are
+evidence about the outside world, and normalising them would be rewriting what the source said.
+`register_forecast()` **validates rather than canonicalises**, because `created_at` is
+hash-committed and quietly reshaping a committed field would change what the chain attests to.
 
 ### 8.2 Feast does not do this for you
 

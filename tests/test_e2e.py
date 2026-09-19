@@ -26,8 +26,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
-from spine import (ablation, chain, decision, evidence, ledger, models,  # noqa: E402
-                   registry, scoring, shadow)
+from spine import (ablation, chain, decision, evaluate, evidence,  # noqa: E402
+                   ledger, models, registry, scoring, shadow)
 from spine.ablation import Variant  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 from spine.registry import RegistryError  # noqa: E402
@@ -418,6 +418,23 @@ def main() -> int:
     print(f"        BSS {scoring.bss(obs):+.4f}   paired {ci.point:+.4f} "
           f"[{ci.lower:+.4f}, {ci.upper:+.4f}]   r_between {rb:.4f} "
           f"(n_eff ceiling {scoring.n_eff_ceiling(rb):.0f})")
+
+    # ---------------------------------------------------- scores in the record
+    print("\n[7b] The record scores itself\n")
+    run = evaluate.score_all(con, as_of=iso(NOW + timedelta(days=60)))
+    ok("every forecast gets a score row, scorable or not",
+       run.total == len(registered), run.summary())
+    ok("all of them are scorable here", run.scored == len(registered))
+    db_obs = evaluate.observations(con)
+    ok("observations rebuilt from the database match the ones held in memory",
+       len(db_obs) == len(obs) and
+       abs(scoring.brier(db_obs) - scoring.brier(obs)) < 1e-12,
+       (scoring.brier(db_obs), scoring.brier(obs)))
+    ev = evaluate.evaluate(con, resamples=800)
+    ok("the readout reproduces the gate decision", ev.gate_fires == ci.fires)
+    ok("...and names the slice it averaged over",
+       len(evaluate.slices(con)) == 1, evaluate.slices(con))
+    print("        " + ev.summary().replace("\n", "\n        "))
 
     # ---------------------------------------------------- decision
     print("\n[8] A decision under the close-only posture\n")

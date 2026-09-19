@@ -15,6 +15,7 @@ prediction markets.
 | 2 · Narrow forecasting | **passed on fixtures** | 67/67 + 43/43 + 54/54 end-to-end. Scoring, decision, models, ablations and the contract registry are built and joined; only *live* market data is blocked on network access. See `docs/PHASE2-REPORT.md` |
 | — · Evidence pipeline | **built, fixtures only** | 68/68 `tests/test_evidence.py` — ingestion, deduplication, effective sources, claims, contradictions, influence budget. See `docs/EVIDENCE-REPORT.md` |
 | — · Shadow execution | **built, fixtures only** | 48/48 `tests/test_shadow.py` — recorded books, queue position, cancellation latency, adverse selection. See `docs/SHADOW-EXECUTION-REPORT.md` |
+| — · Evaluation loop | **built, fixtures only** | 43/43 `tests/test_evaluate.py` — scores, exclusions, settlement divergence, the dependence DAG. See `docs/EVALUATION-REPORT.md` |
 | — · Signal collection | **built, fixtures only** | 42/42 `tests/test_collect.py` — predeclared anchored queries, RSS/Atom, hostile-input guards, provenance |
 | — · Venue access & cycle | **built, offline-validated** | 38/38 `tests/test_venue.py` — `run_cycle.py` runs the whole cycle in one command. See `docs/RUNNING.md` |
 | 3 · Prospective evaluation | blocked | Needs live data and calendar time: ≥12 regimes of pre-registered forecasts |
@@ -42,6 +43,8 @@ phase1/sequential_peeking.py  what unbudgeted peeking costs, and the fix
 spine/registry.py         screened markets -> contracts; rules-version identity
 spine/evidence.py         signals -> claims -> contract effects; the influence budget
 spine/shadow.py           recorded books, queue fills, markouts, adverse selection
+spine/timeutil.py         one canonical timestamp; point-in-time comparison depends on it
+spine/evaluate.py         resolutions -> scores -> verdict; settlement divergence
 spine/collect.py          query-driven RSS/Atom collection, anchored to propositions
 spine/venue.py            Gamma + CLOB read access; no auth path exists
 run_cycle.py              one operating cycle: screen -> register -> record books
@@ -50,6 +53,8 @@ tests/test_phase2.py      Phase 2 validation — scoring, decision
 tests/test_phase2b.py     Phase 2 validation — models, ablations
 tests/test_evidence.py    evidence pipeline validation
 tests/test_shadow.py      shadow execution validation
+tests/test_timeutil.py    timestamp canonicalisation and the ordering bug
+tests/test_evaluate.py    scoring the record, exclusions, the DAG
 tests/test_collect.py     feed parsing, hostile input, provenance
 tests/test_venue.py       venue parsing and the cycle, offline
 tests/test_e2e.py         end-to-end: screen -> registry -> ledger -> score -> decide
@@ -62,12 +67,13 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # all nine suites, 454 checks
+python3 run_tests.py              # all eleven suites, 542 checks
 ```
 
 Individually:
 
 ```bash
+python3 tests/test_timeutil.py    # timestamp canonicalisation
 python3 db/test_schema_v2.py      # schema guarantees
 python3 tests/test_phase1.py      # ledger, chain, availability discipline
 python3 tests/test_phase2.py      # scoring, decision, abstention
@@ -75,6 +81,7 @@ python3 tests/test_phase2b.py     # models, hazard, ablations
 python3 tests/test_evidence.py    # ingestion, dedup, n_eff, influence budget
 python3 tests/test_shadow.py      # books, queue position, markouts
 python3 tests/test_collect.py     # feeds, XML guards, provenance
+python3 tests/test_evaluate.py    # scores, settlement, dependence DAG
 python3 tests/test_venue.py       # book parsing, units, the cycle
 python3 tests/test_e2e.py         # the whole pipeline on one dataset
 python3 phase1/serial_dependence.py    # power and serial dependence analysis
@@ -87,7 +94,7 @@ module, which is how two components can both pass and still not join.
 
 Stdlib only; no installs. Requires Python 3.10+ and SQLite 3.37+ (STRICT tables).
 
-## Three results worth knowing before reading anything else
+## Four results worth knowing before reading anything else
 
 **The probability firewall was removed.** Capping the probability of an event by
 horizon class confuses it with confidence in the estimate; the v1 schema rejected
@@ -108,3 +115,11 @@ independent reporting of the same event *is* lexically unrelated; that is what
 makes it independent. Signal collection is therefore query-driven from the
 contract registry, and text similarity is used only for the job it is good at:
 collapsing syndicated copies. See `docs/EVIDENCE-REPORT.md` §3.
+
+**Point-in-time correctness was format-fragile.** Every retrieval in this
+project is a string comparison, and `datetime.isoformat()` drops the fractional
+part on a whole second — so `'...T13:00:00Z'` sorts *after* `'...T13:00:00.000Z'`
+and a forecast recorded at an instant was invisible to a decision made at that
+same instant. One canonical format, seventeen schema `CHECK ... GLOB`
+constraints, and a ledger that validates rather than coerces the hash-committed
+field. See `docs/EVALUATION-REPORT.md` §1.

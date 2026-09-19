@@ -204,12 +204,13 @@ def main() -> int:
     print("\n[4] Influence budget binds the FINAL contribution, not the raw llr\n")
 
     con = fresh(); seed(con)
-    con.execute("""INSERT INTO event_clusters VALUES('c1',1,'t','t','t')""")
+    con.execute("INSERT INTO event_clusters VALUES('c1',1,?,?,?)",
+                ("2026-06-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z"))
     con.execute("""INSERT INTO claims(claim_hash,cluster_id,cluster_version,assertion,
         authenticity,extraction_fidelity,establishes,n_eff_sources,
         available_for_decision_at,computed_at,feature_version)
         VALUES('cl1','c1',1,'a','artifact_verified','checked_faithful',
-               'underlying_fact',2.0,'t','t','fv1')""")
+               'underlying_fact',2.0,'2026-06-01T00:00:00.000Z','2026-06-01T00:00:00.000Z','fv1')""")
     con.commit()
 
     def eff(final, cap):
@@ -217,7 +218,7 @@ def main() -> int:
             (claim_id,contract_id,horizon_days,llr,conditioned_on_ref,estimator,
              model_version,final_contribution,contribution_cap,
              available_for_decision_at,computed_at)
-            VALUES(1,1,10.0,2.0,'m1','fitted_model',?,?,?,'t','t')""",
+            VALUES(1,1,10.0,2.0,'m1','fitted_model',?,?,?,'2026-06-01T00:00:00.000Z','2026-06-01T00:00:00.000Z')""",
             (f"mv{final}", final, cap))
         con.commit()
 
@@ -234,7 +235,7 @@ def main() -> int:
         con.execute("""INSERT INTO trade_decisions
             (forecast_id,contract_id,decided_at,permitted,abstain_reason,mode,
              max_notional_usd,cluster_exposure_cap_usd,eligibility_status)
-            VALUES(1,1,'t',?,?,?,100.0,500.0,?)""",
+            VALUES(1,1,'2026-06-01T00:00:00.000Z',?,?,?,100.0,500.0,?)""",
             (permitted, abstain, mode, elig))
         con.commit()
 
@@ -259,6 +260,53 @@ def main() -> int:
     check("trade permitted, eligibility tradeable",
           lambda: decision(1, "tradeable"), "accept")
 
+    # ---------------------------------------------------- canonical timestamps
+    print("\n[5b] Timestamps that get compared must have one shape\n")
+
+    con = fresh(); seed(con)
+
+    def forecast_at(created):
+        con.execute(
+            f"INSERT INTO forecasts {FC_COLS} VALUES(?,?,1,?,?,?,'bootstrap',?,1000,"
+            "'independent',1,'m1','v1','r1',?,'model')",
+            ("h_" + created, GENESIS, 5000, 4000, 6000, 0, created))
+        con.commit()
+
+    # '.' (0x2E) sorts before 'Z' (0x5A), so a whole-second stamp compares
+    # GREATER than the millisecond form of the same instant -- and a forecast
+    # written that way is invisible to a retrieval at that instant.
+    check("forecast created_at without milliseconds",
+          lambda: forecast_at("2026-06-01T00:00:00Z"), "reject")
+    check("forecast created_at with an offset instead of Z",
+          lambda: forecast_at("2026-06-01T00:00:00.000+00:00"), "reject")
+    check("forecast created_at with microseconds",
+          lambda: forecast_at("2026-06-01T00:00:00.000000Z"), "reject")
+    check("forecast created_at in canonical form",
+          lambda: forecast_at("2026-06-01T00:00:00.000Z"), "accept")
+
+    con = fresh(); seed(con)
+    check("a signal item with a non-canonical availability time",
+          lambda: con.execute(
+              "INSERT INTO signal_items(content_hash,source_id,first_seen_at,"
+              "artifact_created_at,available_for_decision_at,item_class) "
+              "VALUES('h',1,'2026-06-01T00:00:00.000Z','whenever',"
+              "'2026-06-01T00:00:01Z','reportage')"), "reject")
+    check("...and the same row with canonical times",
+          lambda: con.execute(
+              "INSERT INTO signal_items(content_hash,source_id,first_seen_at,"
+              "artifact_created_at,available_for_decision_at,item_class) "
+              "VALUES('h',1,'2026-06-01T00:00:00.000Z','whenever',"
+              "'2026-06-01T00:00:01.000Z','reportage')"), "accept")
+    # A source's own claim about itself is evidence, not our record: forcing it
+    # into our shape would be rewriting what the source said.
+    check("a source's claimed publication time is left free-form",
+          lambda: con.execute(
+              "INSERT INTO signal_items(content_hash,source_id,first_seen_at,"
+              "artifact_created_at,available_for_decision_at,item_class,"
+              "claimed_published_at) VALUES('h2',1,'2026-06-01T00:00:00.000Z',"
+              "'x','2026-06-01T00:00:01.000Z','reportage','Thu, 17 Sep 2026 14:05:00 +0000')"),
+          "accept")
+
     # ------------------------------------------------------------- outcome/payout
     print("\n[6] Research outcome and economic settlement stay separate\n")
 
@@ -267,7 +315,7 @@ def main() -> int:
     check("void research outcome recorded",
           lambda: con.execute("""INSERT INTO resolutions
               (proposition_id,outcome,resolution_source,recorded_at)
-              VALUES(1,'void','uma','t')"""), "accept")
+              VALUES(1,'void','uma','2026-06-01T00:00:00.000Z')"""), "accept")
     check("UMA 50/50 payout recorded ALONGSIDE the void outcome",
           lambda: con.execute("""INSERT INTO settlements
               (contract_id,settlement_state,payout_per_share,recorded_at)
@@ -278,11 +326,11 @@ def main() -> int:
               VALUES(1,'settled',1.5,'t')"""), "reject")
     check("unscorable forecast must carry an exclusion reason",
           lambda: con.execute("""INSERT INTO scores
-              (forecast_id,brier,scorable,computed_at) VALUES(1,NULL,0,'t')"""), "reject")
+              (forecast_id,brier,scorable,computed_at) VALUES(1,NULL,0,'2026-06-01T00:00:00.000Z')"""), "reject")
     check("unscorable with reason",
           lambda: con.execute("""INSERT INTO scores
               (forecast_id,brier,scorable,exclusion_reason,computed_at)
-              VALUES(1,NULL,0,'void: excluded from BSS','t')"""), "accept")
+              VALUES(1,NULL,0,'void: excluded from BSS','2026-06-01T00:00:00.000Z')"""), "accept")
 
     # ------------------------------------------------- availability and provenance
     print("\n[7] Point-in-time and chain integrity\n")

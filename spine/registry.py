@@ -29,6 +29,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .canonical import content_hash
+from . import timeutil
+
+# One timestamp format for the whole project. spine/timeutil.py has the
+# lexicographic-ordering bug that made this non-negotiable; six copies of
+# these helpers used to live in six modules and disagreed on whole seconds.
+_now = timeutil.now
+_iso = timeutil.iso
+_parse = timeutil.parse
+_canon = timeutil.canonical
 
 # Binary Polymarket markets. Recorded explicitly because the third state is the
 # one that breaks naive P&L accounting.
@@ -62,10 +71,6 @@ def eligibility_for(jurisdiction: str | None) -> str:
     return "close_only" if jurisdiction.upper() in CLOSE_ONLY else "tradeable"
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z"
-    )
 
 
 def rules_version_hash(rules_text: str) -> str:
@@ -89,7 +94,7 @@ def ingest_markets(
     contract whose settlement rule is unknown cannot be forecast against, and
     inventing one would be worse than having none.
     """
-    ts = now or _now()
+    ts = _canon(now) if now else _now()
     elig = eligibility_for(jurisdiction)
     inserted = present = 0
     skipped: list[tuple[str, str]] = []
@@ -158,7 +163,7 @@ def ensure_proposition(
     """
     if horizon_class not in ("T1", "T2", "T3"):
         raise RegistryError(f"horizon_class must be T1/T2/T3, got {horizon_class!r}")
-    ts = now or _now()
+    ts = _canon(now) if now else _now()
     phash = content_hash({
         "statement": statement,
         "resolution_criterion": resolution_criterion,
@@ -205,7 +210,8 @@ def bind(
         """INSERT OR REPLACE INTO proposition_contract_binding
            (proposition_id, contract_id, match_quality, reviewer, reviewed_at, note)
            VALUES (?,?,?,?,?,?)""",
-        (proposition_id, contract_id, match_quality, reviewer, now or _now(), note),
+        (proposition_id, contract_id, match_quality, reviewer,
+         _canon(now) if now else _now(), note),
     )
     con.commit()
 

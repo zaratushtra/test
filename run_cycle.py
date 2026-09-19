@@ -27,7 +27,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
-from spine import collect, ledger, registry, shadow, venue  # noqa: E402
+from spine import collect, evaluate, ledger, registry, shadow, venue  # noqa: E402
 
 
 def now() -> datetime:
@@ -206,6 +206,29 @@ def main() -> int:
                   f"{len(failed)} quer{'y' if len(failed)==1 else 'ies'} failed")
             for r in failed[:6]:
                 print(f"    {r.summary()}")
+
+    # ---------------------------------------------------------- evaluation
+    banner("EVALUATION")
+    run = evaluate.score_all(con)
+    print(f"  {run.summary()}")
+    sl = evaluate.slices(con)
+    if not sl:
+        print("  No forecasts registered yet; nothing to evaluate.")
+    else:
+        print(f"  {len(sl)} slice(s) in the record — these must not be averaged "
+              "together:")
+        for row in sl[:6]:
+            print(f"    {row['forecast_kind']:<20}{row['model_version']:<12}"
+                  f"{row['event_family']:<24}n={row['n']:<6}regimes={row['regimes']}")
+        ev = evaluate.evaluate(con)
+        print("  " + ev.summary().replace("\n", "\n  "))
+        div = evaluate.settlement_divergence(con)
+        if div:
+            print(f"  {len(div)} contract(s) settled against the research outcome — "
+                  "the instrument did not measure the question:")
+            for d in div[:5]:
+                print(f"    {d['market_id']}: paid {d['payout_per_share']} on "
+                      f"{d['outcome']} (binding: {d['match_quality']})")
 
     banner("NEXT")
     print("  Re-run this on a schedule to build the book history shadow execution\n"

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import sqlite3
 
+from . import timeutil
 from .canonical import GENESIS_HASH, content_hash
 from .chain import compute_hash, head
 
@@ -31,7 +32,8 @@ SCHEMA_PATH = os.path.join(
 #   1  initial v2 schema
 #   2  trade_decisions.mode; claim_contract_effects keyed by horizon and estimator
 #   3  shadow execution (section 9) and collection (section 10) tables
-SCHEMA_VERSION = 3
+#   4  canonical-timestamp CHECK constraints on every compared column
+SCHEMA_VERSION = 4
 
 
 class LedgerError(RuntimeError):
@@ -196,6 +198,21 @@ def register_forecast(con: sqlite3.Connection, **fields) -> str:
             "an independent forecast must not carry a market price: it is defined "
             "as having been produced without seeing one"
         )
+
+    # created_at is hash-committed, so it is validated rather than coerced: a
+    # write path that quietly reshaped a committed field would change what the
+    # chain attests to. The other timestamp columns in this project are
+    # canonicalised on write; this one is the exception, deliberately.
+    for field_name in ("created_at", "label_available_at"):
+        value = fields.get(field_name)
+        if value is not None and not timeutil.is_canonical(value):
+            raise LedgerError(
+                f"{field_name}={value!r} is not canonical "
+                f"({timeutil.SQL_GLOB}). Point-in-time retrieval compares these "
+                "as strings, and a whole-second stamp sorts after the "
+                "millisecond form of the same instant — so the forecast would "
+                "be invisible to a decision made at that moment. Use "
+                "spine.timeutil.iso()")
 
     if not con.execute(
         "SELECT 1 FROM manifests WHERE manifest_hash = ?",

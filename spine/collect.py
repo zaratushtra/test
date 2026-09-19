@@ -42,6 +42,15 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 from . import evidence
+from . import timeutil
+
+# One timestamp format for the whole project. spine/timeutil.py has the
+# lexicographic-ordering bug that made this non-negotiable; six copies of
+# these helpers used to live in six modules and disagreed on whole seconds.
+_now = timeutil.now
+_iso = timeutil.iso
+_parse = timeutil.parse
+_canon = timeutil.canonical
 
 USER_AGENT = "spine-collect/0.1"
 
@@ -71,14 +80,8 @@ class HostileFeed(CollectError):
     """The document carries declarations no news feed needs."""
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z")
 
 
-def _iso(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +223,7 @@ def declare_query(
         raise CollectError(
             f"no proposition {proposition_id}: collection is anchored to a "
             "registered proposition, never to a free-text topic")
-    ts = declared_at or _now()
+    ts = _canon(declared_at) if declared_at else _now()
     cur = con.execute(
         """INSERT OR IGNORE INTO collection_queries
            (proposition_id, source_id, feed_url, query_text, declared_at, note)
@@ -239,7 +242,7 @@ def declare_query(
 
 def active_queries(con: sqlite3.Connection, as_of: str | None = None) -> list[dict]:
     """Queries declared by `as_of` and not retired."""
-    ts = as_of or _now()
+    ts = _canon(as_of) if as_of else _now()
     cur = con.execute(
         "SELECT q.id, q.proposition_id, q.source_id, q.feed_url, q.query_text, "
         "       s.name AS source_name "
@@ -293,7 +296,7 @@ def run_query(
     verification is in fact instant for a given source — an exchange feed, a
     court docket — that source should say so explicitly rather than inherit this.
     """
-    ts = ran_at or _now()
+    ts = _canon(ran_at) if ran_at else _now()
     get = fetcher or fetch_feed
 
     def record(outcome, seen=0, ingested=0, dup=0, detail=None):

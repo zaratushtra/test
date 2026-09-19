@@ -31,6 +31,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from . import shadow
+from . import timeutil
+
+# One timestamp format for the whole project. spine/timeutil.py has the
+# lexicographic-ordering bug that made this non-negotiable; six copies of
+# these helpers used to live in six modules and disagreed on whole seconds.
+_now = timeutil.now
+_iso = timeutil.iso
+_parse = timeutil.parse
+_canon = timeutil.canonical
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
 CLOB_BASE = "https://clob.polymarket.com"
@@ -45,9 +54,6 @@ class Unreachable(VenueError):
     """The endpoint could not be reached at all. Distinct from a bad response."""
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z")
 
 
 def _get(url: str, timeout: int = 30) -> object:

@@ -14,6 +14,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SUITES = [
+    ("timestamps", "tests/test_timeutil.py"),
     ("schema", "db/test_schema_v2.py"),
     ("phase 1 — ledger, chain, point-in-time", "tests/test_phase1.py"),
     ("phase 2 — scoring, decision, sequential", "tests/test_phase2.py"),
@@ -22,6 +23,7 @@ SUITES = [
     ("shadow execution", "tests/test_shadow.py"),
     ("signal collection", "tests/test_collect.py"),
     ("venue access and the cycle", "tests/test_venue.py"),
+    ("evaluation: scores, settlement, DAG", "tests/test_evaluate.py"),
     ("end-to-end integration", "tests/test_e2e.py"),
 ]
 

@@ -37,28 +37,25 @@ from datetime import datetime, timedelta, timezone
 
 from .canonical import content_hash
 from .decision import BookLevel, Fill, walk_book
+from . import timeutil
+
+# One timestamp format for the whole project. spine/timeutil.py has the
+# lexicographic-ordering bug that made this non-negotiable; six copies of
+# these helpers used to live in six modules and disagreed on whole seconds.
+_now = timeutil.now
+_iso = timeutil.iso
+_parse = timeutil.parse
+_canon = timeutil.canonical
 
 
 class ShadowError(RuntimeError):
     """A shadow execution step would have produced a misleading number."""
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z")
 
 
-def _parse(ts: str) -> datetime:
-    try:
-        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ShadowError(f"unparseable timestamp {ts!r}") from exc
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def _iso(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------

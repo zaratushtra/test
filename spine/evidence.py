@@ -38,6 +38,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from .canonical import content_hash
+from . import timeutil
+
+# One timestamp format for the whole project. spine/timeutil.py has the
+# lexicographic-ordering bug that made this non-negotiable; six copies of
+# these helpers used to live in six modules and disagreed on whole seconds.
+_now = timeutil.now
+_iso = timeutil.iso
+_parse = timeutil.parse
+_canon = timeutil.canonical
 
 # A pair of sources with no recorded correlation estimate is NOT assumed
 # independent. This floor is a declared policy, not a measurement, and every
@@ -91,22 +100,10 @@ class EvidenceError(RuntimeError):
     """An evidence operation would have recorded something misleading."""
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z")
 
 
-def _parse(ts: str) -> datetime:
-    try:
-        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise EvidenceError(f"unparseable timestamp {ts!r}") from exc
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def _iso(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +201,7 @@ def ingest_item(
             title, body_ref, item_class)
            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (h, source_id, url, event_at, claimed_published_at, _iso(seen),
-         now or _now(), _iso(avail), title, body_ref, item_class))
+         _canon(now) if now else _now(), _iso(avail), title, body_ref, item_class))
     item_id = cur.lastrowid
     con.commit()
 
@@ -241,7 +238,7 @@ def record_syndication(
             "INSERT OR IGNORE INTO source_error_correlation"
             "(source_a, source_b, correlation, basis, n_observations, computed_at) "
             "VALUES(?,?,?,'syndication',1,?)",
-            (a, b, SYNDICATION_CORRELATION, computed_at))
+            (a, b, SYNDICATION_CORRELATION, _canon(computed_at)))
         written += 1
     con.commit()
     return written
@@ -547,7 +544,8 @@ def record_claim(
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (h, cluster_id, cluster_version, assertion, authenticity,
          extraction_fidelity, establishes, primary_artifact_id, eff.n_eff,
-         available_for_decision_at, now or _now(), feature_version))
+         _canon(available_for_decision_at), _canon(now) if now else _now(),
+         feature_version))
     con.commit()
     return cur.lastrowid, eff
 
@@ -569,7 +567,7 @@ def record_contradiction(
     """
     cur = con.execute(
         "INSERT INTO claim_contradictions(claim_a, claim_b, kind, detected_at) "
-        "VALUES(?,?,?,?)", (claim_a, claim_b, kind, detected_at))
+        "VALUES(?,?,?,?)", (claim_a, claim_b, kind, _canon(detected_at)))
     con.commit()
     return cur.lastrowid
 
@@ -726,7 +724,8 @@ def record_effect(
             available_for_decision_at, computed_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (claim_id, contract_id, horizon_days, llr, conditioned_on_ref, estimator,
-         model_version, c.final, cap, available_for_decision_at, now or _now()))
+         model_version, c.final, cap, _canon(available_for_decision_at),
+         _canon(now) if now else _now()))
     con.commit()
     return cur.lastrowid, c
 
