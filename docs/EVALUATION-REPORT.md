@@ -193,9 +193,33 @@ caught this, because the old test *asserted the buggy behaviour* as if it were a
 - **The seventeen `GLOB` checks cover the columns compared today.** A new comparison on an
   unconstrained column would reintroduce the same class of bug, which is an argument for adding the
   check at the same time as the column.
-- **`stale_scores()` is advisory.** Nothing forces a rescore before the next evaluation, so a
+- **`stale_scores()` is advisory** for anything other than the gate. Nothing forces a rescore before the next evaluation, so a
   revision left unscored silently keeps the old observation in the record. A gate on `evaluate()`
   would be stricter.
+
+---
+
+## 6b. Two bugs found reviewing this work afterwards
+
+Both were in code written in this session and passing its own tests.
+
+**The budget alpha was being used as the interval alpha.** `evaluate()` passed the plan's `alpha`
+to `regime_bootstrap_ci()` and then divided the resulting width by 1.96 to recover a standard
+error. Those are two different quantities: the plan's alpha is the total testing budget the schedule
+spends to set a z threshold, while the interval is only a way to estimate the sampling spread.
+Sharing the parameter narrows the interval, so the standard error comes out understated — by **33%
+at alpha = 0.20** — which makes the gate *easier* to fire. It is invisible at the default
+alpha = 0.05, so it would have sat there for exactly the person who customised the budget. The
+interval is now always 95%; the schedule owns alpha alone.
+
+**Empty signal items all shared one content hash.** A feed entry with a guid but no title and no
+description produces empty text, and `content_hash({"body": ""})` is the same for every one of
+them. Two unrelated silent entries from two different sources were therefore recorded as
+byte-identical syndication at **correlation 1.0** — manufacturing a dependence out of two sources
+that said nothing. `ingest_item()` now refuses an empty item, and `run_query()` records the
+rejection and continues, which it should have been doing anyway: its docstring promised failures
+were recorded rather than raised, and that promise covered the fetch and parse steps but not the
+ingest step.
 
 ---
 

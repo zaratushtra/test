@@ -210,6 +210,29 @@ def main() -> int:
            "SELECT DISTINCT outcome FROM collection_runs")} ==
        {"ok", "fetch_failed", "parse_failed"})
 
+    print("\n[4b] An entry this module cannot ingest does not abort the sweep\n")
+    feeds["https://cw.test/rss"] = (
+        b'<?xml version="1.0"?><rss version="2.0"><channel>'
+        b'<item><guid>urn:cw:empty</guid><link>https://example.test/e</link></item>'
+        b'<item><guid>urn:cw:real</guid><title>A committee scheduled a vote</title>'
+        b'<description>The clerk confirmed the sitting.</description></item>'
+        b'</channel></rss>')
+    mixed = collect.run_query(con, collect.active_queries(con, at(hours=5))[0],
+                              fetcher=fetch, ran_at=at(hours=5))
+    ok("the run succeeds despite an unusable entry", mixed.outcome == "ok",
+       mixed.summary())
+    ok("the usable entry is ingested", mixed.ingested == 1, mixed.summary())
+    ok("...and the rejection is recorded with its reason",
+       mixed.detail and "rejected" in mixed.detail, mixed.detail)
+    ok("an empty entry never becomes a signal item",
+       con.execute("SELECT COUNT(*) FROM signal_items WHERE body_ref=?",
+                   ("urn:cw:empty",)).fetchone()[0] == 0)
+    ok("...so it cannot be recorded as a syndicated copy of another empty one",
+       con.execute("SELECT COUNT(*) FROM source_error_correlation "
+                   "WHERE basis='syndication'").fetchone()[0] == 0)
+    print(f"        {mixed.summary()}")
+    feeds["https://cw.test/rss"] = RSS
+
     # ---------------------------------------------------- provenance
     print("\n[5] Provenance makes the anchor checkable\n")
     items = collect.anchored_items(con, pid, at(hours=5))

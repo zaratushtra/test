@@ -52,6 +52,10 @@ from .scoring import (
 # lexicographic-ordering bug that made this non-negotiable.
 _now = timeutil.now
 
+# Two-sided 95% normal quantile: the divisor that turns a 95% interval width
+# back into a standard error.
+Z_95 = 1.959963985
+
 SCORABLE_OUTCOMES = {"resolved_yes", "resolved_no"}
 
 # Why a forecast could not be scored. Each is a row in `scores`, not a silence.
@@ -604,16 +608,23 @@ def evaluate(
                               f"{plan['n_looks']} looks already taken"))
 
     try:
-        ci = regime_bootstrap_ci(obs, resamples=resamples, alpha=plan["alpha"])
+        # Deliberately a FIXED 95% interval, not the plan's alpha. The two are
+        # different quantities that a shared parameter would silently conflate:
+        # the plan's alpha is the total testing budget the schedule spends to
+        # set a z threshold, while this interval is only a way to estimate the
+        # sampling spread. Passing the plan's alpha here narrows the interval,
+        # and dividing that narrower width by 1.96 understates the standard
+        # error -- by 33% at alpha=0.20 -- which makes the gate EASIER to fire.
+        # The error only appears for a plan that declares a non-default alpha,
+        # so it would have sat unnoticed in exactly the case someone customised.
+        ci = regime_bootstrap_ci(obs, resamples=resamples, alpha=0.05)
     except ScoringError as e:
         return Evaluation(**base, n_looks=plan["n_looks"],
                           blocked_by=str(e).split(".")[0])
 
     look = sequential.schedule(plan["n_looks"], plan["alpha"],
                                plan["spending"])[index - 1]
-    # The bootstrap interval gives the sampling spread; the schedule decides how
-    # far from zero the point must sit at THIS look.
-    std_error = (ci.upper - ci.lower) / (2 * 1.959963985)
+    std_error = (ci.upper - ci.lower) / (2 * Z_95)
     fires = sequential.gate_fires(ci.point, std_error, look)
 
     if record_look:

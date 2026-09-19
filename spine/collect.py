@@ -271,8 +271,9 @@ class RunResult:
     def summary(self) -> str:
         if self.outcome != "ok":
             return f"query {self.query_id}: {self.outcome} — {self.detail}"
-        return (f"query {self.query_id}: {self.seen} seen, {self.ingested} new, "
-                f"{self.duplicate} already held")
+        s = (f"query {self.query_id}: {self.seen} seen, {self.ingested} new, "
+             f"{self.duplicate} already held")
+        return s + (f" ({self.detail})" if self.detail else "")
 
 
 def run_query(
@@ -322,14 +323,23 @@ def run_query(
         return RunResult(rid, query["id"], "parse_failed", 0, 0, 0, detail=str(e))
 
     ingested, duplicate, ids = 0, 0, []
+    rejected: list[str] = []
     rid = record("ok", len(entries), 0, 0)
     for e in entries:
-        res = evidence.ingest_item(
-            con, query["source_id"], e.text,
-            first_seen_at=ts, item_class=item_class,
-            verification_lag_seconds=verification_lag_seconds,
-            url=e.link, claimed_published_at=e.claimed_published_at,
-            title=e.title or None, body_ref=e.guid, now=ts)
+        # A feed that yields an entry this module cannot ingest -- no text, an
+        # unreadable timestamp -- must not abort the sweep. The docstring says
+        # failures are recorded rather than raised past this point, and that has
+        # to hold for the ingest step too, not only the fetch and parse steps.
+        try:
+            res = evidence.ingest_item(
+                con, query["source_id"], e.text,
+                first_seen_at=ts, item_class=item_class,
+                verification_lag_seconds=verification_lag_seconds,
+                url=e.link, claimed_published_at=e.claimed_published_at,
+                title=e.title or None, body_ref=e.guid, now=ts)
+        except evidence.EvidenceError as exc:
+            rejected.append(f"{e.guid}: {exc}")
+            continue
         if res.note.startswith("already ingested"):
             duplicate += 1
         else:
@@ -339,11 +349,14 @@ def run_query(
             "INSERT OR IGNORE INTO item_provenance(item_id, query_id, run_id) "
             "VALUES (?,?,?)", (res.item_id, query["id"], rid))
 
+    detail = (f"{len(rejected)} entr{'y' if len(rejected) == 1 else 'ies'} "
+              f"rejected: " + "; ".join(rejected[:3])) if rejected else None
     con.execute(
-        "UPDATE collection_runs SET entries_ingested=?, entries_duplicate=? "
-        "WHERE id=?", (ingested, duplicate, rid))
+        "UPDATE collection_runs SET entries_ingested=?, entries_duplicate=?, "
+        "detail=? WHERE id=?", (ingested, duplicate, detail, rid))
     con.commit()
-    return RunResult(rid, query["id"], "ok", len(entries), ingested, duplicate, ids)
+    return RunResult(rid, query["id"], "ok", len(entries), ingested, duplicate,
+                     ids, detail)
 
 
 def sweep(

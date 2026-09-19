@@ -174,6 +174,15 @@ def ingest_item(
     """
     if verification_lag_seconds < 0:
         raise EvidenceError("verification lag cannot be negative")
+    if not body.strip():
+        # An item with no content is not evidence, and worse: every empty item
+        # hashes identically, so two unrelated articles that happen to carry no
+        # title and no description would be recorded as byte-identical
+        # syndication at correlation 1.0 -- manufacturing a dependence that is
+        # not there out of two sources that said nothing.
+        raise EvidenceError(
+            "a signal item needs content: empty items all share one content "
+            "hash and would be recorded as syndicated copies of each other")
     seen = _parse(first_seen_at)
     avail = (_parse(available_for_decision_at) if available_for_decision_at
              else seen + timedelta(seconds=verification_lag_seconds))

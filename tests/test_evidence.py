@@ -49,6 +49,14 @@ def iso(dt):
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def _msg(fn) -> str:
+    try:
+        fn()
+    except Exception as e:  # noqa: BLE001 - the message is the thing under test
+        return str(e)
+    return ""
+
+
 def at(**kw):
     return iso(NOW + timedelta(**kw))
 
@@ -95,6 +103,13 @@ def main() -> int:
        raises(lambda: evidence.ingest_item(
            con, indep, "x", first_seen_at=at(hours=1), item_class="reportage",
            available_for_decision_at=at(minutes=0)), EvidenceError))
+    ok("an item with no content is refused",
+       raises(lambda: evidence.ingest_item(
+           con, indep, "   ", first_seen_at=at(), item_class="reportage"),
+           EvidenceError))
+    ok("...because every empty item shares one hash and would look syndicated",
+       "syndicated" in _msg(lambda: evidence.ingest_item(
+           con, indep, "", first_seen_at=at(), item_class="reportage")))
     ok("a negative verification lag is refused",
        raises(lambda: evidence.ingest_item(
            con, indep, "y", first_seen_at=at(), item_class="reportage",

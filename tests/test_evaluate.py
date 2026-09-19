@@ -307,6 +307,45 @@ def main() -> int:
        zs[-1] > 1.645, zs[-1])
     print(f"        z thresholds: {' '.join(f'{z:.2f}' for z in zs)}")
 
+    print("\n[4a-ii] The budget alpha is not the interval alpha\n")
+    # These are different quantities. Sharing a parameter would narrow the
+    # interval used to estimate the sampling spread, understate the standard
+    # error, and make the gate easier to fire -- silently, and only for someone
+    # who customised alpha.
+    con5 = ledger.connect(":memory:", create=True)
+    _, made5 = build(con5, n_regimes=12, per=10, seed=5)
+    for pid, _, outcome in made5:
+        evaluate.record_resolution(
+            con5, pid, "resolved_yes" if outcome else "resolved_no", "m",
+            recorded_at=at(days=40))
+    evaluate.score_all(con5, as_of=at(days=40))
+    evaluate.declare_plan(con5, n_looks=10, declared_by="a", alpha=0.20)
+
+    con6 = ledger.connect(":memory:", create=True)
+    _, made6 = build(con6, n_regimes=12, per=10, seed=5)
+    for pid, _, outcome in made6:
+        evaluate.record_resolution(
+            con6, pid, "resolved_yes" if outcome else "resolved_no", "m",
+            recorded_at=at(days=40))
+    evaluate.score_all(con6, as_of=at(days=40))
+    evaluate.declare_plan(con6, n_looks=10, declared_by="a", alpha=0.05)
+
+    wide = evaluate.evaluate(con5, resamples=3000)
+    narrow = evaluate.evaluate(con6, resamples=3000)
+    ok("the reported interval is 95% regardless of the plan's alpha",
+       abs((wide.ci_upper - wide.ci_lower) -
+           (narrow.ci_upper - narrow.ci_lower)) < 0.02,
+       (wide.ci_upper - wide.ci_lower, narrow.ci_upper - narrow.ci_lower))
+    ok("a looser budget gives a LOWER z threshold, as it should",
+       wide.z_threshold < narrow.z_threshold,
+       (wide.z_threshold, narrow.z_threshold))
+    ok("...which is the only thing the plan's alpha should change",
+       abs(wide.ci_point - narrow.ci_point) < 0.02)
+    print(f"        alpha 0.20 -> z {wide.z_threshold:.2f}, "
+          f"alpha 0.05 -> z {narrow.z_threshold:.2f}; "
+          f"interval widths {wide.ci_upper - wide.ci_lower:.4f} vs "
+          f"{narrow.ci_upper - narrow.ci_lower:.4f}")
+
     print("\n[4b-i] Below twelve regimes, still refused\n")
     con4 = ledger.connect(":memory:", create=True)
     _, made4 = build(con4, n_regimes=4, per=10, seed=9)
