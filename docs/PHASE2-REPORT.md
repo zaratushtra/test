@@ -3,7 +3,7 @@
 **Date:** 19 Sep 2026
 **Status:** **Partial.** The two layers buildable without market access are complete and validated.
 Contract-registry population and the ablation harness remain blocked on Phase 0.
-**Validation:** `tests/test_phase2.py` — 47/47. Suites from earlier phases still green (36/36, 33/33).
+**Validation:** `tests/test_phase2.py` — 61/61. Suites from earlier phases still green (36/36, 33/33).
 
 ---
 
@@ -77,6 +77,52 @@ improvement obtained by coarsening the bins would be a straightforward way to fa
 
 ---
 
+## 2b. Second finding: peeking costs an order of magnitude
+
+§12 asserted that repeatedly checking a 95% interval is p-hacking, and left it there. Assertion is
+cheap, so it was measured (`phase1/sequential_peeking.py`) the same way the bootstrap failure was.
+
+Fixed 95% lower bound, **true effect zero**, checked at every look and stopping at the first pass:
+
+| looks | final look only | checked every look |
+|---|---|---|
+| 1 | 4.2% | 4.2% |
+| 5 | 2.7% | 10.1% |
+| 10 | 2.2% | 12.1% |
+| 20 | 3.0% | 14.9% |
+| 52 | 3.4% | **19.3%** |
+
+A weekly check over one year turns a ~3% gate into 19.3%, a six-fold inflation.
+
+(The single-look column sits near 3% rather than exactly 2.5%, with the one-look case at 4.2%. That
+is the normal approximation being anti-conservative at small n — twelve observations with a plug-in
+standard deviation — plus Monte Carlo noise at 1500 trials. It does not affect the comparison, which
+is between columns at the same n.) **No bad faith is required** — the
+gate is cheap, data accumulates, and someone looks. A rule that depends on people not looking will
+fail, so `spine/sequential.py` budgets the looking instead.
+
+Alpha spending restores the nominal rate at negligible cost in power:
+
+| looks | spending | false positives | power @ effect 0.5 |
+|---|---|---|---|
+| 20 | Pocock | 3.3% | 100% |
+| 20 | O'Brien-Fleming | 1.7% | 100% |
+| 52 | O'Brien-Fleming | **1.1%** | 100% |
+
+O'Brien-Fleming is the default: severe early, approaching nominal at the end, so an early stop is
+rare and meaningful and almost all power is preserved for the full schedule. At 20 looks its fourth
+threshold is z = 4.24 against a final z = 2.53, versus a nominal one-sided 1.645.
+
+**The number of looks must be declared before the record starts accumulating.** Choosing it
+afterwards, once the shape of the data is visible, reintroduces exactly the freedom the schedule
+removes.
+
+An incidental fix: the first implementation recomputed the standard deviation over the whole record
+at every look, which is O(n²) and made a 52-look schedule impractically slow. Replaced with running
+sums.
+
+---
+
 ## 3. Gate status
 
 | Phase 2 gate item | State |
@@ -88,6 +134,7 @@ improvement obtained by coarsening the bins would be a straightforward way to fa
 | Explicit abstention | **done** — every refusal carries a reason |
 | Shadow execution in parallel | partial — book walking and fills exist; needs recorded books |
 | Ablation harness | not started — needs real forecasts to ablate |
+| Sequential testing procedure (§12) | **done** — `spine/sequential.py`, measured and validated |
 
 ---
 

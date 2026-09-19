@@ -11,7 +11,7 @@ prediction markets.
 |---|---|---|
 | 0 · Feasibility | **blocked** | Polymarket and FRED unreachable from the build environment; operating jurisdiction undeclared. PolyBench audit complete (failed — see `PHASE0-FINDINGS.md`). |
 | 1 · Ledger & registry | **passed** | 33/33 `tests/test_phase1.py`, 36/36 `db/test_schema_v2.py` — see `docs/PHASE1-REPORT.md` |
-| 2 · Narrow forecasting | **partial** | 47/47 `tests/test_phase2.py` — scoring and decision layers done; registry population and ablations blocked on Phase 0. See `docs/PHASE2-REPORT.md` |
+| 2 · Narrow forecasting | **partial** | 61/61 `tests/test_phase2.py` — scoring and decision layers done; registry population and ablations blocked on Phase 0. See `docs/PHASE2-REPORT.md` |
 | 3–6 | specification | — |
 
 Nothing here demonstrates predictive skill or profitability. Phases 0–1 cover
@@ -27,6 +27,7 @@ db/test_schema_v2.py      probe suite — every finding an external review raise
 spine/                    canonicalisation, hash chain, evidence ledger
 phase0/                   market screen, vintage audit, throughput pilot
 phase1/serial_dependence.py   the analysis that invalidated the original gate
+phase1/sequential_peeking.py  what unbudgeted peeking costs, and the fix
 tests/test_phase1.py      Phase 1 validation
 tests/test_phase2.py      Phase 2 validation
 docs/                     phase reports, the external review, and its disposition
@@ -39,7 +40,8 @@ docs/history/             superseded v1 documents
 python3 db/test_schema_v2.py      # schema guarantees
 python3 tests/test_phase1.py      # ledger, chain, availability discipline
 python3 tests/test_phase2.py      # scoring, decision, abstention
-python3 phase1/serial_dependence.py   # power and serial dependence analysis
+python3 phase1/serial_dependence.py    # power and serial dependence analysis
+python3 phase1/sequential_peeking.py   # cost of peeking; alpha-spending check
 ```
 
 Stdlib only; no installs. Requires Python 3.10+ and SQLite 3.37+ (STRICT tables).

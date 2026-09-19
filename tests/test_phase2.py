@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spine import decision, scoring  # noqa: E402
+from spine import decision, scoring, sequential  # noqa: E402
 from spine.decision import BookLevel  # noqa: E402
 from spine.scoring import Observation, ScoringError  # noqa: E402
 
@@ -262,6 +262,46 @@ def main() -> int:
     ok("an invalid side raises",
        raises(lambda: decision.conservative_probability_bp(1, 1, 1, "MAYBE"),
               decision.DecisionError))
+
+    # ------------------------------------------------- sequential testing
+    print("\n[10] Looking at the gate is budgeted, not free\n")
+    sched = sequential.schedule(20, alpha=0.05, spending="obrien_fleming")
+    ok("schedule has one entry per look", len(sched) == 20)
+    ok("cumulative alpha reaches exactly the budget",
+       math.isclose(sched[-1].alpha_spent_cumulative, 0.05, abs_tol=1e-9),
+       sched[-1].alpha_spent_cumulative)
+    ok("per-look increments sum to the budget",
+       math.isclose(sum(lk.alpha_this_look for lk in sched), 0.05, abs_tol=1e-9))
+    ok("cumulative spend is monotone",
+       all(a.alpha_spent_cumulative <= b.alpha_spent_cumulative
+           for a, b in zip(sched, sched[1:])))
+    ok("information fraction ends at 1.0", sched[-1].information_fraction == 1.0)
+
+    poc = sequential.schedule(20, alpha=0.05, spending="pocock")
+    ok("O'Brien-Fleming spends far less than Pocock at the first look",
+       sched[2].alpha_spent_cumulative < poc[2].alpha_spent_cumulative / 10,
+       f"OBF={sched[2].alpha_spent_cumulative:.2e} Pocock={poc[2].alpha_spent_cumulative:.2e}")
+    ok("O'Brien-Fleming keeps more budget for the final look",
+       sched[-1].alpha_this_look > poc[-1].alpha_this_look)
+    ok("every sequential threshold is stricter than the nominal 1.645",
+       all(lk.z_threshold > 1.645 for lk in sched))
+
+    ok("an early look with a modest estimate does not fire",
+       not sequential.gate_fires(0.20, 0.10, sched[3]))
+    ok("the same estimate at the final look does fire",
+       sequential.gate_fires(0.20, 0.05, sched[-1]))
+    ok("a zero estimate never fires",
+       not any(sequential.gate_fires(0.0, 0.01, lk) for lk in sched))
+    ok("unknown spending function raises",
+       raises(lambda: sequential.schedule(5, spending="made_up"),
+              sequential.SequentialError))
+    ok("zero looks raises",
+       raises(lambda: sequential.schedule(0), sequential.SequentialError))
+    ok("information fraction outside (0,1] raises",
+       raises(lambda: sequential.spend_pocock(1.5, 0.05),
+              sequential.SequentialError))
+    print(f"        OBF look 4/20: z={sched[3].z_threshold:.2f}  "
+          f"final: z={sched[-1].z_threshold:.2f}  (nominal one-sided: 1.645)")
 
     print("\n" + "=" * 74)
     print(f"{len(PASS)}/{len(PASS) + len(FAIL)} checks passed")

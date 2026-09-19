@@ -512,8 +512,14 @@ sit outside any LLM's authority.** v1 did not address this at all.
 *including no-bet decisions*, then report the trading subset separately — calibration on a
 self-selected subset is meaningful only for that subset.
 
-**Predeclare evaluation dates or use a justified sequential-testing procedure.** Repeatedly checking
-a 95% interval and stopping at the first favourable result is not a gate, it is p-hacking.
+**Predeclare evaluation dates or use a justified sequential-testing procedure** —
+implemented in `spine/sequential.py` and measured, not merely asserted. Checking a fixed 95% bound
+weekly for a year inflates the false-positive rate roughly six-fold, to **19.3%**, with no bad faith
+required:
+the gate is cheap, data accumulates, and someone looks. Alpha spending restores it —
+O'Brien-Fleming gives 1.1% at 52 looks while keeping full power — and is the default because a false
+"it works" costs far more here than running the full schedule. **The number of looks is declared
+before the record starts**, since choosing it afterwards restores the freedom the schedule removes.
 
 **Ablations are the point.** Does adding verified signals improve anything? Does deduplication help?
 Does lineage weighting help? Does the evidence model beat the contemporaneous price? Without these
