@@ -29,6 +29,15 @@ from spine.canonical import (  # noqa: E402
 PASS, FAIL = [], []
 
 
+def _message(fn) -> str:
+    """Exception text: part of the interface when a refusal explains itself."""
+    try:
+        fn()
+    except Exception as e:  # noqa: BLE001
+        return str(e)
+    return ""
+
+
 def ok(label, cond, detail=""):
     (PASS if cond else FAIL).append(label)
     mark = "PASS" if cond else "FAIL"
@@ -269,6 +278,39 @@ def main() -> int:
        and r["effects_at_decision"][0]["final_contribution"] == 0.6)
     ok("recomputing the hash from stored fields reproduces it",
        chain.compute_hash(r, r["prev_hash"]) == fh)
+
+    print("\n[8] A database at the wrong schema version is refused\n")
+    import sqlite3 as _sq
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "spine.db")
+        c = ledger.connect(path)
+        ok("a fresh path is created and stamped",
+           c.execute("PRAGMA user_version").fetchone()[0] == ledger.SCHEMA_VERSION)
+        c.close()
+        c2 = ledger.connect(path)
+        ok("reopening at the right version works",
+           c2.execute("SELECT COUNT(*) FROM contracts").fetchone()[0] == 0)
+        c2.close()
+        ok("re-creating over existing tables is refused",
+           raises(lambda: ledger.connect(path, create=True), ledger.LedgerError))
+
+        stale = os.path.join(d, "stale.db")
+        c3 = _sq.connect(stale)
+        c3.execute("CREATE TABLE contracts(id INTEGER)")
+        c3.execute("PRAGMA user_version = 1")
+        c3.commit()
+        c3.close()
+        ok("an older schema version is refused, not opened anyway",
+           raises(lambda: ledger.connect(stale), ledger.LedgerError))
+        ok("...and the message says why an empty result would be worse",
+           "evidence of absence" in _message(lambda: ledger.connect(stale)))
+
+        empty = os.path.join(d, "empty.db")
+        _sq.connect(empty).close()
+        ok("an empty file is created into, not refused",
+           ledger.connect(empty).execute(
+               "PRAGMA user_version").fetchone()[0] == ledger.SCHEMA_VERSION)
 
     # -------------------------------------------------- summary
     print("\n" + "=" * 74)

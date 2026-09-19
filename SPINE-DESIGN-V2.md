@@ -12,7 +12,7 @@ has been demonstrated.
 
 **Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline** and **§10.2–§10.3 shadow execution** built (`docs/EVIDENCE-REPORT.md`, `docs/SHADOW-EXECUTION-REPORT.md`) — every
 layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
-not code. 406 checks across 8 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
+not code. 454 checks across 9 suites (`python3 run_tests.py`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -373,7 +373,12 @@ separates that from unrelated text, and the reason is structural: independent re
 event is lexically unrelated, which is what makes it independent.
 
 Signal collection is therefore **query-driven from the contract registry** — items are retrieved
-*for* a registered proposition, so the event anchor is known at ingest and never inferred. Text
+*for* a registered proposition, so the event anchor is known at ingest and never inferred.
+Implemented in `spine/collect.py`: queries are **predeclared and stamped**, like a reference class,
+because one written after seeing which articles would have helped is a selection rule fitted to the
+outcome. Which query retrieved an item is stored as provenance, so the anchor is checkable rather
+than asserted, and a failed fetch is recorded as a run — a gap that looks like "no news that day" is
+indistinguishable from evidence of quiet. Text
 similarity is retained for the job it actually does: collapsing syndicated and near-copied
 artifacts. Unanchored items fall back to lexical linkage and will under-merge, which is the safe
 direction: an item wrongly left out is evidence unused, while one wrongly merged in is evidence

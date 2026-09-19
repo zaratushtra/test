@@ -28,6 +28,13 @@ PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 
+-- Schema version. spine/ledger.connect() REFUSES to open a database stamped
+-- with a different one, rather than running new code against old tables --
+-- which is how a query silently returns nothing and the absence gets read as
+-- evidence. Bump this whenever this file changes in a way that is not purely
+-- additive; ledger.SCHEMA_VERSION must match.
+PRAGMA user_version = 3;
+
 -- ============================================================================
 -- 1. EVIDENCE LAYER
 -- ============================================================================
@@ -559,4 +566,55 @@ CREATE TABLE fill_markouts (
     adverse_bp         REAL NOT NULL,
     computed_at        TEXT NOT NULL,
     UNIQUE (fill_id, horizon_seconds)
+) STRICT;
+
+-- ============================================================================
+-- 10. COLLECTION
+-- The anchor-first correction in docs/EVIDENCE-REPORT.md section 3: lexical
+-- similarity finds duplication, never events, because independent reporting of
+-- one event is lexically unrelated -- that is what makes it independent. So
+-- items are retrieved FOR a registered proposition and the anchor is known at
+-- ingest rather than inferred afterwards.
+--
+-- Which query produced an item is therefore provenance, not configuration, and
+-- has to be in the record: without it the anchor is an assertion nobody can
+-- check.
+-- ============================================================================
+
+CREATE TABLE collection_queries (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposition_id     INTEGER NOT NULL REFERENCES propositions(id),
+    source_id          INTEGER NOT NULL REFERENCES sources(id),
+    feed_url           TEXT NOT NULL,
+    query_text         TEXT,             -- terms, where the feed takes them
+    -- Predeclared, like a reference class: a query written after seeing which
+    -- articles would have helped is a selection rule fitted to the outcome.
+    declared_at        TEXT NOT NULL,
+    retired_at         TEXT,
+    note               TEXT,
+    UNIQUE (proposition_id, source_id, feed_url, query_text, declared_at)
+) STRICT;
+
+CREATE TABLE collection_runs (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_id           INTEGER NOT NULL REFERENCES collection_queries(id),
+    ran_at             TEXT NOT NULL,
+    entries_seen       INTEGER NOT NULL CHECK (entries_seen >= 0),
+    entries_ingested   INTEGER NOT NULL CHECK (entries_ingested >= 0),
+    entries_duplicate  INTEGER NOT NULL CHECK (entries_duplicate >= 0),
+    -- A run that failed is recorded as a run. A gap in the record that looks
+    -- like "no news that day" is worse than a logged failure.
+    outcome            TEXT NOT NULL CHECK (outcome IN ('ok','fetch_failed','parse_failed')),
+    detail             TEXT,
+    CHECK (entries_ingested <= entries_seen)
+) STRICT;
+
+-- Which query produced which item. Many-to-many: the same article legitimately
+-- arrives through two queries, and knowing that is part of knowing how
+-- independent the coverage is.
+CREATE TABLE item_provenance (
+    item_id            INTEGER NOT NULL REFERENCES signal_items(id),
+    query_id           INTEGER NOT NULL REFERENCES collection_queries(id),
+    run_id             INTEGER NOT NULL REFERENCES collection_runs(id),
+    PRIMARY KEY (item_id, query_id, run_id)
 ) STRICT;

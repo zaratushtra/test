@@ -177,8 +177,11 @@ without both.
 
 ## 7. Next
 
-1. **Point the collector at real feeds** — the anchor-first architecture means this is a query per
-   registered proposition, not a firehose.
+1. ~~Point the collector at real feeds.~~ **Collector built** (`spine/collect.py`, 42/42): queries
+   are predeclared per proposition, provenance is recorded, and feeds are treated as hostile input —
+   a DOCTYPE or ENTITY declaration is refused before parsing, because entity expansion turns a few
+   hundred bytes of XML into gigabytes of memory. Pointing it at *real* feeds needs network and the
+   event-family decision.
 2. **Fit the first event-family model** so `estimator='fitted_model'` means something measured.
    Blocked on having resolved cases, i.e. on Phase 3.
 3. **Replace assumed correlations with observed error agreement** as the record accumulates. This is

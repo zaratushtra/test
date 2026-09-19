@@ -27,20 +27,62 @@ SCHEMA_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "db", "schema_v2.sql"
 )
 
+# Must match `PRAGMA user_version` in schema_v2.sql.
+#   1  initial v2 schema
+#   2  trade_decisions.mode; claim_contract_effects keyed by horizon and estimator
+#   3  shadow execution (section 9) and collection (section 10) tables
+SCHEMA_VERSION = 3
+
 
 class LedgerError(RuntimeError):
     """A registration violated a discipline the ledger enforces."""
 
 
-def connect(path: str = ":memory:", create: bool = False) -> sqlite3.Connection:
+def connect(path: str = ":memory:", create: bool | None = None) -> sqlite3.Connection:
+    """
+    Open the ledger, refusing a database whose schema is not this one.
+
+    `create` defaults to "create it if it is empty", which is what every caller
+    wanted and several were getting wrong by testing `os.path.exists` — a file
+    that exists is not the same as a file with tables in it.
+
+    A database stamped with a different `user_version` is **refused**, not
+    migrated and not opened anyway. Running new code against old tables makes a
+    query return nothing where it should return rows, and an empty result is
+    indistinguishable from evidence of absence. There is no real data in any of
+    these databases yet, so the remedy is to recreate; when there is, this is
+    where a migration goes.
+    """
     con = sqlite3.connect(path)
     con.execute("PRAGMA foreign_keys = ON")
     con.execute("PRAGMA busy_timeout = 5000")
     if path != ":memory:":
         con.execute("PRAGMA journal_mode = WAL")
+
+    has_tables = con.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_%'").fetchone()[0] > 0
+
+    if create is None:
+        create = not has_tables
+    if create and has_tables:
+        raise LedgerError(f"{path} already has tables; refusing to re-create it")
+
     if create:
         with open(SCHEMA_PATH, encoding="utf-8") as fh:
             con.executescript(fh.read())
+        return con
+
+    if has_tables:
+        found = con.execute("PRAGMA user_version").fetchone()[0]
+        if found != SCHEMA_VERSION:
+            con.close()
+            raise LedgerError(
+                f"{path} is schema version {found}, this code expects "
+                f"{SCHEMA_VERSION}. Refusing to open it: new code against old "
+                "tables returns empty results that read as evidence of absence. "
+                "The schema is still changing and no database here holds real "
+                "data yet, so recreate it.")
     return con
 
 

@@ -27,7 +27,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
-from spine import ledger, registry, shadow, venue  # noqa: E402
+from spine import collect, ledger, registry, shadow, venue  # noqa: E402
 
 
 def now() -> datetime:
@@ -52,6 +52,8 @@ def main() -> int:
     ap.add_argument("--save-dir", help="write raw responses here for later replay")
     ap.add_argument("--no-books", action="store_true",
                     help="register contracts but do not record books")
+    ap.add_argument("--sweep", action="store_true",
+                    help="also run every declared collection query")
     args = ap.parse_args()
 
     # ---------------------------------------------------------- reachability
@@ -113,7 +115,11 @@ def main() -> int:
 
     # ---------------------------------------------------------- registry
     banner("CONTRACT REGISTRY")
-    con = ledger.connect(args.db, create=not os.path.exists(args.db))
+    try:
+        con = ledger.connect(args.db)
+    except ledger.LedgerError as e:
+        print(f"\n  {e}", file=sys.stderr)
+        return 3
     rep = registry.ingest_markets(con, [asdict(m) for m in selected],
                                   jurisdiction=args.jurisdiction)
     print(f"  {rep.summary()}")
@@ -179,6 +185,27 @@ def main() -> int:
             if one_sided:
                 print(f"  {one_sided} book(s) one-sided: no midpoint, "
                       "no markout reference")
+
+    # ---------------------------------------------------------- signals
+    if args.sweep:
+        banner("SIGNAL COLLECTION")
+        queries = collect.active_queries(con)
+        if not queries:
+            print("  No collection queries declared.\n"
+                  "  Collection is anchored to registered propositions, so a query\n"
+                  "  needs a proposition first (spine/registry.ensure_proposition)\n"
+                  "  and then spine/collect.declare_query. See docs/RUNNING.md.")
+        else:
+            print(f"  {len(queries)} active quer{'y' if len(queries)==1 else 'ies'}")
+            results = collect.sweep(con, fetcher=None if not args.from_dir
+                                    else (lambda u: b""))
+            new_items = sum(r.ingested for r in results)
+            dupes = sum(r.duplicate for r in results)
+            failed = [r for r in results if r.outcome != "ok"]
+            print(f"  {new_items} new items, {dupes} already held, "
+                  f"{len(failed)} quer{'y' if len(failed)==1 else 'ies'} failed")
+            for r in failed[:6]:
+                print(f"    {r.summary()}")
 
     banner("NEXT")
     print("  Re-run this on a schedule to build the book history shadow execution\n"

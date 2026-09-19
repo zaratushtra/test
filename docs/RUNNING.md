@@ -9,7 +9,7 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
-python3 run_tests.py        # 8 suites, 406 checks — run this first
+python3 run_tests.py        # 9 suites, 454 checks — run this first
 ```
 
 ## The one thing this project needs from you
@@ -49,6 +49,7 @@ Useful flags:
 | `--limit N` | markets to fetch (default 3000) |
 | `--no-books` | register contracts only |
 | `--from-dir DIR` | replay saved JSON instead of fetching |
+| `--sweep` | also run every declared collection query |
 
 ## What a healthy run looks like
 
@@ -64,6 +65,51 @@ Useful flags:
 Re-running is safe and idempotent on contracts: a market already registered under the same rules
 version is not registered again. Books are *not* idempotent, by design — a later capture is new
 data, and building the time series is the point.
+
+## Collecting signals
+
+Collection is **anchored to a registered proposition** — items are retrieved *for* a question, not
+scraped and sorted afterwards. `docs/EVIDENCE-REPORT.md` §3 is why: two independent reports of one
+event share almost no vocabulary, so text similarity cannot group them and must not be asked to.
+
+That means a query needs a proposition first:
+
+```python
+from spine import collect, evidence, ledger, registry
+
+con = ledger.connect("spine.db")
+src = evidence.ensure_source(con, "Committee Watch", "outlet", owner_group="Meridian")
+pid = registry.ensure_proposition(
+    con, "The measure reaches a floor vote",
+    "A recorded floor vote before the deadline",
+    "2026-10-09T00:00:00Z", "committee_adoption", "T1")
+collect.declare_query(con, proposition_id=pid, source_id=src,
+                      feed_url="https://example.test/rss", query_text="measure")
+```
+
+Then `python3 run_cycle.py --sweep` runs every active query each cycle.
+
+Queries are **predeclared and stamped**, for the same reason a reference class is frozen before use:
+a query written once you know which articles would have helped is a selection rule fitted to the
+outcome. Retire a query by setting `retired_at` rather than deleting it.
+
+A failed fetch is recorded as a run with its reason. A gap in the record that looks like "no news
+that day" is worse than a logged failure, because the first is indistinguishable from evidence of
+quiet.
+
+## Schema versions
+
+The database is stamped with `PRAGMA user_version`, and `ledger.connect()` **refuses** a database
+stamped with a different one:
+
+```
+spine.db is schema version 2, this code expects 3. Refusing to open it: new code
+against old tables returns empty results that read as evidence of absence.
+```
+
+`run_cycle.py` exits 3 on this. The schema is still changing and no database holds real data yet, so
+the remedy is to recreate. Once there is a record worth keeping, this is where a migration goes —
+the refusal exists so that moment is noticed rather than missed.
 
 ## Things that mean something is wrong
 
