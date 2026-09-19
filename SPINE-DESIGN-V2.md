@@ -10,9 +10,9 @@ are real and tested; the rest is specification.
 No forecast has been made, nothing has been benchmarked, and no accuracy or profitability advantage
 has been demonstrated.
 
-**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline built** (`spine/evidence.py`, `docs/EVIDENCE-REPORT.md`) — every
+**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline** and **§10.2–§10.3 shadow execution** built (`docs/EVIDENCE-REPORT.md`, `docs/SHADOW-EXECUTION-REPORT.md`) — every
 layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
-not code. 312 checks across 6 suites (`python3 run_tests.py`).
+not code. 366 checks across 7 suites (`python3 run_tests.py`).
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -525,6 +525,14 @@ For passive orders, "the market touched my limit" is not a fill: model queue pos
 fills, cancellation latency, and the fact that fills arrive disproportionately when the price is
 moving against you.
 
+Implemented in `spine/shadow.py`. Queue position is FIFO against the depth resting at the limit, and
+the traded volume that clears it is a **required input from a trade feed, never inferred from depth
+changes** — cancellations and fills are indistinguishable in depth data, so a book that thins out
+because everyone pulled would otherwise score as a full fill. Cancellation latency fills are
+flagged rather than assumed away. Adverse selection is **measured** by marking each fill out against
+a later snapshot, so §10.2's claim about when fills arrive becomes a finding on this project's own
+record rather than an assumption baked into the model.
+
 **Paper and live are different kinds of record.** `trade_decisions.mode` is `NOT NULL` with no
 default, and the eligibility invariant is stated on live permissions alone:
 
@@ -544,6 +552,13 @@ column cannot be omitted in practice.
 v1 put paper trading after a 10–18 month accuracy gate. If execution eats the edge you learn that at
 month eighteen. Order-book collection and shadow fills run **in parallel with prospective
 forecasting from the start**. It costs almost nothing and it can end the project early and cheaply.
+
+`book_snapshots` carries the same three-timestamp discipline as `signal_items`: the venue's own
+timestamp is a claim, `captured_at` is observation, and only `available_for_decision_at` governs
+retrieval. A **crossed book is refused** rather than repaired — it means the two sides were read at
+different moments, and both spread and midpoint would be fictional at exactly the moments execution
+is most expensive. Markouts live in their own table because a number knowable only later must not
+look writable at the moment of the fill.
 
 ---
 

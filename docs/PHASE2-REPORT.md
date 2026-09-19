@@ -257,7 +257,7 @@ budget.
 | Baseline + independent + market-conditioned forecasts | **done** — `spine/models.py`, deadline-aware, validated |
 | Ablation harness | **done** — `spine/ablation.py`, paired, regime-gated, exercised end to end |
 | Explicit abstention | **done** — every refusal carries a reason |
-| Shadow execution in parallel | partial — book walking and fills exist; needs recorded books |
+| Shadow execution in parallel | **done** — `spine/shadow.py`: recorded books, queue position, cancellation latency, measured adverse selection. See `docs/SHADOW-EXECUTION-REPORT.md` |
 | Sequential testing procedure (§12) | **done** — `spine/sequential.py`, measured and validated |
 
 ---
@@ -267,9 +267,13 @@ budget.
 - No real forecast has been scored. Every number above comes from synthetic fixtures with a known
   generating process.
 - `min_edge_bp` defaults to 100bp on judgement, not measurement. The right value depends on the
-  noise in our own price estimates, which is unknown until real books are recorded.
-- Queue position, cancellation latency and adverse selection on passive fills are **named in the
-  design and not yet modelled**. `require_full_fill` is a blunt substitute.
+  noise in our own price estimates, which is unknown until real books are recorded — though
+  `shadow.adverse_selection_report()` now produces exactly the realised-cost number that would
+  calibrate it.
+- ~~Queue position, cancellation latency and adverse selection are named and not modelled.~~
+  **Closed** by `spine/shadow.py` — see `docs/SHADOW-EXECUTION-REPORT.md`. Still fixtures only: the
+  passive model needs a *trade* feed, not just book snapshots, because depth changes cannot
+  distinguish a fill from a cancellation.
 - Nothing here bears on whether the method has predictive skill.
 
 ---

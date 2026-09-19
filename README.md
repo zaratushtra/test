@@ -13,6 +13,7 @@ prediction markets.
 | 1 · Ledger & registry | **passed** | 33/33 `tests/test_phase1.py`, 39/39 `db/test_schema_v2.py` — see `docs/PHASE1-REPORT.md` |
 | 2 · Narrow forecasting | **passed on fixtures** | 67/67 + 43/43 + 54/54 end-to-end. Scoring, decision, models, ablations and the contract registry are built and joined; only *live* market data is blocked on network access. See `docs/PHASE2-REPORT.md` |
 | — · Evidence pipeline | **built, fixtures only** | 68/68 `tests/test_evidence.py` — ingestion, deduplication, effective sources, claims, contradictions, influence budget. See `docs/EVIDENCE-REPORT.md` |
+| — · Shadow execution | **built, fixtures only** | 48/48 `tests/test_shadow.py` — recorded books, queue position, cancellation latency, adverse selection. See `docs/SHADOW-EXECUTION-REPORT.md` |
 | 3 · Prospective evaluation | blocked | Needs live data and calendar time: ≥12 regimes of pre-registered forecasts |
 | 4–6 | specification | — |
 
@@ -37,10 +38,12 @@ phase1/serial_dependence.py   the analysis that invalidated the original gate
 phase1/sequential_peeking.py  what unbudgeted peeking costs, and the fix
 spine/registry.py         screened markets -> contracts; rules-version identity
 spine/evidence.py         signals -> claims -> contract effects; the influence budget
+spine/shadow.py           recorded books, queue fills, markouts, adverse selection
 tests/test_phase1.py      Phase 1 validation
 tests/test_phase2.py      Phase 2 validation — scoring, decision
 tests/test_phase2b.py     Phase 2 validation — models, ablations
 tests/test_evidence.py    evidence pipeline validation
+tests/test_shadow.py      shadow execution validation
 tests/test_e2e.py         end-to-end: screen -> registry -> ledger -> score -> decide
 run_tests.py              runs every suite
 docs/                     phase reports, the external review, and its disposition
@@ -51,7 +54,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # all six suites, 312 checks
+python3 run_tests.py              # all seven suites, 366 checks
 ```
 
 Individually:
@@ -62,6 +65,7 @@ python3 tests/test_phase1.py      # ledger, chain, availability discipline
 python3 tests/test_phase2.py      # scoring, decision, abstention
 python3 tests/test_phase2b.py     # models, hazard, ablations
 python3 tests/test_evidence.py    # ingestion, dedup, n_eff, influence budget
+python3 tests/test_shadow.py      # books, queue position, markouts
 python3 tests/test_e2e.py         # the whole pipeline on one dataset
 python3 phase1/serial_dependence.py    # power and serial dependence analysis
 python3 phase1/sequential_peeking.py   # cost of peeking; alpha-spending check

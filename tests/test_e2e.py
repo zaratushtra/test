@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
 from spine import (ablation, chain, decision, evidence, ledger, models,  # noqa: E402
-                   registry, scoring)
+                   registry, scoring, shadow)
 from spine.ablation import Variant  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 from spine.registry import RegistryError  # noqa: E402
@@ -423,8 +423,19 @@ def main() -> int:
     print("\n[8] A decision under the close-only posture\n")
     best = max(registered, key=lambda t: t[4].p_est_bp)
     fc = best[4]
-    book = [decision.BookLevel(price_bp=3000, size_usd=200.0),
-            decision.BookLevel(price_bp=3100, size_usd=800.0)]
+    # The decision walks a RECORDED book, retrieved point-in-time -- not a list
+    # built at the call site, which is how a backtest quietly fills at prices
+    # nobody was offering.
+    snap = shadow.record_book(
+        con, cid, bids=[(2800, 500.0), (2700, 1200.0)],
+        asks=[(3000, 200.0), (3100, 800.0), (3300, 2000.0)],
+        captured_at=iso(NOW), source="fixture", capture_lag_seconds=2)
+    live = shadow.book_at(con, cid, iso(NOW + timedelta(minutes=1)))
+    ok("the decision retrieves the book that was available to it",
+       live is not None and live.snapshot_id == snap)
+    ok("a decision before the book was usable would have had none",
+       shadow.book_at(con, cid, iso(NOW - timedelta(seconds=1))) is None)
+    book = live.asks
     d = decision.decide(
         p_est_bp=fc.p_est_bp, p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp, side="YES",
         book=book, intended_size_usd=500.0, costs_bp=100.0,
@@ -475,6 +486,44 @@ def main() -> int:
                max_notional_usd, cluster_exposure_cap_usd, eligibility_status)
               VALUES (?,?,?,0,'paper',100.0,100.0,'close_only')""",
            (fid, cid, iso(NOW))), sqlite3.IntegrityError))
+
+    # ---------------------------------------------------- shadow execution
+    print("\n[8b] Shadow execution against the same book\n")
+    o_agg = shadow.record_order(
+        con, contract_id=cid, book_snapshot_id=snap, side="YES",
+        style="aggressive", limit_price_bp=3300, intended_size_usd=500.0,
+        placed_at=iso(NOW), decision_id=con.execute(
+            "SELECT id FROM trade_decisions ORDER BY id LIMIT 1").fetchone()[0])
+    f_agg = shadow.aggressive_fill(live, "YES", 500.0, 3300)
+    shadow.record_fill(con, o_agg, f_agg, recorded_at=iso(NOW))
+    ok("an aggressive fill pays through the inside price",
+       f_agg.avg_price_bp > live.best_ask_bp, f_agg.summary())
+    ok("...and the decision's own estimate matched the same walk",
+       abs(f_agg.avg_price_bp - d.expected_acquisition_bp) < 1e-6,
+       (f_agg.avg_price_bp, d.expected_acquisition_bp))
+
+    o_pass = shadow.record_order(
+        con, contract_id=cid, book_snapshot_id=snap, side="YES", style="passive",
+        limit_price_bp=2800, intended_size_usd=500.0, placed_at=iso(NOW),
+        cancel_at=iso(NOW + timedelta(minutes=5)), cancel_latency_ms=250.0)
+    f_pass = shadow.passive_fill(live, "YES", 500.0, 2800,
+                                 traded_at_level_usd=300.0)
+    shadow.record_fill(con, o_pass, f_pass, recorded_at=iso(NOW + timedelta(minutes=5)))
+    ok("resting behind 500 of queue with 300 traded is not a fill",
+       f_pass.filled_usd == 0.0, f_pass.summary())
+
+    later = shadow.record_book(
+        con, cid, bids=[(2500, 600.0)], asks=[(2700, 600.0)],
+        captured_at=iso(NOW + timedelta(minutes=20)), source="fixture")
+    adverse = shadow.markout(con, con.execute(
+        "SELECT id FROM shadow_fills WHERE order_id=?", (o_agg,)).fetchone()[0],
+        later, computed_at=iso(NOW + timedelta(minutes=25)))
+    ok("the aggressive fill is marked out against a later book",
+       abs(adverse - (2900.0 - 2600.0)) < 1e-9, adverse)
+    rep = shadow.adverse_selection_report(con)
+    ok("the execution record covers both orders", rep.n_orders == 2)
+    ok("...and reports a fill rate below one", rep.fill_rate == 0.5, rep.summary())
+    print(f"        {rep.summary()}")
 
     # ---------------------------------------------------- ablation
     print("\n[9] Does the evidence beat the price on this record?\n")

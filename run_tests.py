@@ -19,6 +19,7 @@ SUITES = [
     ("phase 2 — scoring, decision, sequential", "tests/test_phase2.py"),
     ("phase 2 — models and ablations", "tests/test_phase2b.py"),
     ("evidence pipeline", "tests/test_evidence.py"),
+    ("shadow execution", "tests/test_shadow.py"),
     ("end-to-end integration", "tests/test_e2e.py"),
 ]
 

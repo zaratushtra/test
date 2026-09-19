@@ -470,3 +470,93 @@ CREATE TABLE scores (
     CHECK ((scorable = 1) = (brier IS NOT NULL)),
     CHECK (scorable = 1 OR exclusion_reason IS NOT NULL)
 ) STRICT;
+
+-- ============================================================================
+-- 9. SHADOW EXECUTION
+-- v2 section 10.3: order-book collection and shadow fills run in parallel with
+-- prospective forecasting from the start, because if execution eats the edge
+-- you want to learn that in month one rather than month eighteen.
+--
+-- Nothing in this section can place an order. It is a measurement apparatus,
+-- and under the section 2.1 paper-only posture it is the only execution there is.
+-- ============================================================================
+
+CREATE TABLE book_snapshots (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id        INTEGER NOT NULL REFERENCES contracts(id),
+    snapshot_hash      TEXT NOT NULL,     -- content address of the levels
+    -- Same discipline as signal_items: the venue's own timestamp is a claim,
+    -- captured_at is when we saw it, and only the third governs retrieval.
+    venue_timestamp    TEXT,
+    captured_at        TEXT NOT NULL,
+    available_for_decision_at TEXT NOT NULL,
+    bids               TEXT NOT NULL,     -- JSON [[price_bp,size_usd],...] best first
+    asks               TEXT NOT NULL,
+    source             TEXT NOT NULL CHECK (source IN
+                         ('clob_rest','clob_ws','replay','fixture')),
+    UNIQUE (contract_id, snapshot_hash, captured_at),
+    CHECK (available_for_decision_at >= captured_at)
+) STRICT;
+
+CREATE INDEX idx_books_available
+    ON book_snapshots (contract_id, available_for_decision_at);
+
+CREATE TRIGGER book_snapshots_immutable BEFORE UPDATE ON book_snapshots
+BEGIN SELECT RAISE(ABORT, 'book snapshots are immutable; capture a new one'); END;
+
+CREATE TABLE shadow_orders (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    decision_id        INTEGER REFERENCES trade_decisions(id),
+    contract_id        INTEGER NOT NULL REFERENCES contracts(id),
+    book_snapshot_id   INTEGER NOT NULL REFERENCES book_snapshots(id),
+    side               TEXT NOT NULL CHECK (side IN ('YES','NO')),
+    -- Aggressive orders cross the spread and are priced by walking the book.
+    -- Passive orders rest and are priced by queue position, which is a
+    -- different question with a much less flattering answer.
+    style              TEXT NOT NULL CHECK (style IN ('aggressive','passive')),
+    limit_price_bp     INTEGER NOT NULL CHECK (limit_price_bp > 0 AND limit_price_bp < 10000),
+    intended_size_usd  REAL NOT NULL CHECK (intended_size_usd > 0),
+    placed_at          TEXT NOT NULL,
+    -- Intent to cancel is not cancellation: an order remains fillable for the
+    -- round trip. Fills inside that window are the ones that hurt.
+    cancel_at          TEXT,
+    cancel_latency_ms  REAL NOT NULL DEFAULT 0.0 CHECK (cancel_latency_ms >= 0.0),
+    CHECK (style = 'aggressive' OR cancel_at IS NOT NULL)
+) STRICT;
+
+CREATE TABLE shadow_fills (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id           INTEGER NOT NULL UNIQUE REFERENCES shadow_orders(id),
+    fill_model         TEXT NOT NULL CHECK (fill_model IN
+                         ('book_walk','queue_position','no_fill')),
+    filled_usd         REAL NOT NULL CHECK (filled_usd >= 0.0),
+    avg_price_bp       REAL CHECK (avg_price_bp IS NULL OR
+                                   (avg_price_bp > 0 AND avg_price_bp < 10000)),
+    fully_filled       INTEGER NOT NULL CHECK (fully_filled IN (0,1)),
+    -- Queue mechanics, recorded so a fill rate can be audited rather than trusted.
+    queue_ahead_usd    REAL CHECK (queue_ahead_usd IS NULL OR queue_ahead_usd >= 0.0),
+    traded_at_level_usd REAL CHECK (traded_at_level_usd IS NULL OR
+                                    traded_at_level_usd >= 0.0),
+    filled_after_cancel INTEGER NOT NULL DEFAULT 0
+                         CHECK (filled_after_cancel IN (0,1)),
+    no_fill_reason     TEXT,
+    recorded_at        TEXT NOT NULL,
+    CHECK (fill_model <> 'no_fill' OR (filled_usd = 0.0 AND no_fill_reason IS NOT NULL)),
+    CHECK (filled_usd = 0.0 OR avg_price_bp IS NOT NULL)
+) STRICT;
+
+-- Measured against a LATER snapshot, so it cannot be computed at fill time.
+-- Kept separate from shadow_fills for exactly that reason: a table whose rows
+-- can only be written later should not look writable at the same moment.
+CREATE TABLE fill_markouts (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    fill_id            INTEGER NOT NULL REFERENCES shadow_fills(id),
+    reference_snapshot_id INTEGER NOT NULL REFERENCES book_snapshots(id),
+    horizon_seconds    REAL NOT NULL CHECK (horizon_seconds > 0),
+    mid_at_fill_bp     REAL NOT NULL,
+    mid_at_reference_bp REAL NOT NULL,
+    -- Signed so POSITIVE means the market moved against the position taken.
+    adverse_bp         REAL NOT NULL,
+    computed_at        TEXT NOT NULL,
+    UNIQUE (fill_id, horizon_seconds)
+) STRICT;
