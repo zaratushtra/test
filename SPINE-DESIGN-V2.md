@@ -4,12 +4,13 @@
 **Rewritten** 19 Sep 2026 following an external design review that invalidated three load-bearing
 parts of v1. Disposition of all 27 findings: `REVIEW-RESPONSE.md`.
 
-**Nature.** A design document with two phases implemented. `db/schema_v2.sql` (36/36 probes) and
-the `spine/` ledger (33/33 checks) are real and tested; everything beyond Phase 1 is specification.
+**Nature.** A design document with implementation underway. `db/schema_v2.sql` (36/36), the `spine/`
+ledger (33/33) and the scoring and decision layers (47/47) are real and tested; the rest is
+specification.
 No forecast has been made, nothing has been benchmarked, and no accuracy or profitability advantage
 has been demonstrated.
 
-**Phase status:** 0 blocked on external access and undeclared jurisdiction · **1 PASSED** · 2 next.
+**Phase status:** 0 blocked on external access and undeclared jurisdiction · **1 PASSED** · **2 PARTIAL** (scoring and decision done and validated; registry population blocked on Phase 0).
 
 ---
 

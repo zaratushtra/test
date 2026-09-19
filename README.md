@@ -11,7 +11,7 @@ prediction markets.
 |---|---|---|
 | 0 · Feasibility | **blocked** | Polymarket and FRED unreachable from the build environment; operating jurisdiction undeclared. PolyBench audit complete (failed — see `PHASE0-FINDINGS.md`). |
 | 1 · Ledger & registry | **passed** | 33/33 `tests/test_phase1.py`, 36/36 `db/test_schema_v2.py` — see `docs/PHASE1-REPORT.md` |
-| 2 · Narrow forecasting | next | — |
+| 2 · Narrow forecasting | **partial** | 47/47 `tests/test_phase2.py` — scoring and decision layers done; registry population and ablations blocked on Phase 0. See `docs/PHASE2-REPORT.md` |
 | 3–6 | specification | — |
 
 Nothing here demonstrates predictive skill or profitability. Phases 0–1 cover
@@ -28,6 +28,7 @@ spine/                    canonicalisation, hash chain, evidence ledger
 phase0/                   market screen, vintage audit, throughput pilot
 phase1/serial_dependence.py   the analysis that invalidated the original gate
 tests/test_phase1.py      Phase 1 validation
+tests/test_phase2.py      Phase 2 validation
 docs/                     phase reports, the external review, and its disposition
 docs/history/             superseded v1 documents
 ```
@@ -37,6 +38,7 @@ docs/history/             superseded v1 documents
 ```bash
 python3 db/test_schema_v2.py      # schema guarantees
 python3 tests/test_phase1.py      # ledger, chain, availability discipline
+python3 tests/test_phase2.py      # scoring, decision, abstention
 python3 phase1/serial_dependence.py   # power and serial dependence analysis
 ```
 
@@ -52,4 +54,6 @@ are now separate. Cap exposure, never the probability of reality.
 **The original validation gate was invalid, not merely slow.** A cluster
 bootstrap over weeks cannot see a component shared across all weeks, and fires on
 pure noise up to 38% of the time — running longer makes it marginally worse.
-Scoring now groups by `regime_id` and requires at least 12 independent regimes.
+Scoring now groups by `regime_id` and requires at least 12 independent regimes —
+and `spine/scoring.py` exports no week-level bootstrap at all, so the invalid
+path cannot be taken by accident.
