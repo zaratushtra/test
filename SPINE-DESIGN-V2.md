@@ -550,6 +550,26 @@ it forward.
 
 ---
 
+## 13b. Data sources and access
+
+**Constraint: free and open-source only.** Full table with verified access terms in
+`docs/DATA-SOURCES.md`.
+
+The material point for the roadmap: **Phase 0's critical path requires no registration whatsoever.**
+The Polymarket Gamma API and the CLOB *read* endpoints are public — no key, no account, no wallet —
+so the market screen, the contract registry and the order-book snapshots that shadow execution needs
+are all reachable with nothing but network access. Authentication is required only for order
+placement, which is a Phase 6 concern behind the jurisdiction gate.
+
+Free keys are needed later for FRED/ALFRED, CourtListener and congress.gov. None blocks Phase 0, and
+FRED is lower priority than §13 implies: Stage 2 pressure vectors feed **T3**, the tier that cannot
+be validated on any human timescale, while T1 and T2 do not use them.
+
+The constraint drops NewsGuard and paid news APIs. That is survivable — §7.2 already required source
+independence be learned from observed behaviour rather than bought as a vendor score.
+
+---
+
 ## 14. Unverified facts
 
 Confirmed 19 Sep 2026 and time-sensitive; re-check before relying on any of it.

@@ -31,6 +31,7 @@ phase1/sequential_peeking.py  what unbudgeted peeking costs, and the fix
 tests/test_phase1.py      Phase 1 validation
 tests/test_phase2.py      Phase 2 validation
 docs/                     phase reports, the external review, and its disposition
+docs/DATA-SOURCES.md      free/OSS sources and what each actually requires
 docs/history/             superseded v1 documents
 ```
 
