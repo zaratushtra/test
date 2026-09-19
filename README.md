@@ -17,6 +17,7 @@ prediction markets.
 | — · Shadow execution | **built, fixtures only** | 48/48 `tests/test_shadow.py` — recorded books, queue position, cancellation latency, adverse selection. See `docs/SHADOW-EXECUTION-REPORT.md` |
 | — · Evaluation loop | **built, fixtures only** | 87/87 `tests/test_evaluate.py` — scores, exclusions, settlement divergence, the dependence DAG. See `docs/EVALUATION-REPORT.md` |
 | — · Signal collection | **built, fixtures only** | 42/42 `tests/test_collect.py` — predeclared anchored queries, RSS/Atom, hostile-input guards, provenance |
+| 4 · Container | **built** | 38/38 `tests/test_serve.py` — scheduled collector, clean SIGTERM, restart safety, no secret mechanism. `Dockerfile`, `serve.py` |
 | — · Venue access & cycle | **built, offline-validated** | 38/38 `tests/test_venue.py` — `run_cycle.py` runs the whole cycle in one command. See `docs/RUNNING.md` |
 | 3 · Prospective evaluation | blocked | Needs live data and calendar time: ≥12 regimes of pre-registered forecasts |
 | 4–6 | specification | — |
@@ -48,6 +49,8 @@ spine/evaluate.py         resolutions -> scores -> verdict; settlement divergenc
 spine/collect.py          query-driven RSS/Atom collection, anchored to propositions
 spine/venue.py            Gamma + CLOB read access; no auth path exists
 run_cycle.py              one operating cycle: screen -> register -> record books
+serve.py                  the scheduled collector: interval passes, clean SIGTERM
+Dockerfile                stdlib-only image; non-root, read-only, no secrets
 tests/test_phase1.py      Phase 1 validation
 tests/test_phase2.py      Phase 2 validation — scoring, decision
 tests/test_phase2b.py     Phase 2 validation — models, ablations
@@ -55,6 +58,7 @@ tests/test_evidence.py    evidence pipeline validation
 tests/test_shadow.py      shadow execution validation
 tests/test_timeutil.py    timestamp canonicalisation and the ordering bug
 tests/test_docs.py        the documents' claims, checked against the code
+tests/test_serve.py       signals, failure handling, restart safety
 tests/test_evaluate.py    scoring the record, exclusions, the DAG
 tests/test_collect.py     feed parsing, hostile input, provenance
 tests/test_venue.py       venue parsing and the cycle, offline
@@ -68,7 +72,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # all eleven suites, 590 checks
+python3 run_tests.py              # 12 suites, 628 checks
 python3 run_tests.py --docs       # and check what the documents claim
 ```
 

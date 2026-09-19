@@ -9,7 +9,7 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
-python3 run_tests.py        # 11 suites, 590 checks — run this first
+python3 run_tests.py        # 12 suites, 628 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 
@@ -160,13 +160,47 @@ a venue change, not a network problem, and the two need different responses from
 
 ## Building the record
 
-Shadow execution needs a **history** of books, so `run_cycle.py` is meant to run on a schedule —
-hourly is a reasonable start, and the right interval depends on how fast the markets you care about
-move. Something like:
+Shadow execution needs a **history** of books, so the cycle is meant to run repeatedly. Either cron:
 
 ```
 0 * * * *  cd /path/to/spine && python3 run_cycle.py --jurisdiction GB --db spine.db >> cycle.log 2>&1
 ```
+
+or `serve.py`, which is the same thing with the failure modes handled:
+
+```bash
+python3 serve.py --interval 3600 --heartbeat health.json \
+  -- --jurisdiction GB --db spine.db --sweep
+```
+
+It finishes the current pass on SIGTERM rather than aborting mid-write, exits non-zero after
+consecutive failures so a supervisor restarts it instead of letting it fail silently forever, kills
+a pass that hangs, and writes a heartbeat after each one so a health check reads state rather than
+inferring it from the process being alive. A process that is alive and failing every pass is the
+case worth catching.
+
+Restarting is safe: contracts are keyed by rules-version hash, items by content hash, manifests by
+content, so nothing is re-registered. Books *are* re-recorded, because a later capture is a new
+observation — that is the point.
+
+### In a container
+
+```bash
+docker build -t spine .
+docker run -d --name spine --read-only --tmpfs /tmp \
+  -v spine-data:/data spine \
+  --interval 3600 --heartbeat /data/health.json \
+  -- --jurisdiction GB --db /data/spine.db --sweep
+```
+
+The image installs nothing with pip — the project is stdlib-only, so there is no dependency surface
+to audit. It runs as an unprivileged user, the code is not writable by that user, `tini` forwards
+SIGTERM so a stop is clean rather than a SIGKILL ten seconds later, and the healthcheck reads the
+heartbeat rather than liveness.
+
+**There is no secret handling, and no mechanism to add one.** Under the paper-only posture the venue
+endpoints are public and `spine/venue.py` has no authentication path at all, so a secrets mount
+would be a facility with no use and a liability the moment one appeared.
 
 **Passive fill modelling additionally needs the CLOB trades channel**, which this module does not yet
 read. Depth changes alone cannot distinguish a fill from a cancellation
