@@ -26,7 +26,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
-from spine import ablation, chain, decision, ledger, models, registry, scoring  # noqa: E402
+from spine import (ablation, chain, decision, evidence, ledger, models,  # noqa: E402
+                   registry, scoring)
 from spine.ablation import Variant  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 from spine.registry import RegistryError  # noqa: E402
@@ -189,6 +190,90 @@ def main() -> int:
     ok("binding to a contract that does not exist is refused by the schema",
        raises(lambda: registry.bind(con, pid, 99_999, "exact", "e2e"),
               sqlite3.IntegrityError))
+
+    # ---------------------------------------------------- evidence -> forecast
+    print("\n[4b] A forecast actually driven by retrieved evidence\n")
+    rc_preview = ReferenceClass("committee_adoption", 1, k=6, n=40,
+                                exposure_units=40.0, alpha=1.0, beta=9.0)
+    wire = evidence.ensure_source(con, "Global Wire", "wire", now=iso(NOW))
+    herald = evidence.ensure_source(con, "Herald", "outlet",
+                                    owner_group="Meridian", now=iso(NOW))
+    desk = evidence.ensure_source(con, "Independent Desk", "outlet", now=iso(NOW))
+
+    story = ("The committee recorded the measure as adopted at its Thursday "
+             "sitting, and the minutes were published the same afternoon.")
+    other = ("Members confirmed the chair had secured the votes needed before "
+             "the sitting opened, according to people present in the room.")
+    i1 = evidence.ingest_item(con, wire, story, first_seen_at=iso(NOW),
+                              item_class="reportage", verification_lag_seconds=600,
+                              now=iso(NOW))
+    i2 = evidence.ingest_item(con, herald, story,
+                              first_seen_at=iso(NOW + timedelta(minutes=30)),
+                              item_class="reportage", verification_lag_seconds=600,
+                              now=iso(NOW))
+    i3 = evidence.ingest_item(con, desk, other,
+                              first_seen_at=iso(NOW + timedelta(minutes=45)),
+                              item_class="reportage", verification_lag_seconds=600,
+                              now=iso(NOW))
+    ok("the syndicated copy is detected on ingest", i2.duplicate_of == [i1.item_id])
+
+    ev_items = [
+        {"id": i1.item_id, "body": story, "anchor": "prop:adoption",
+         "available_for_decision_at": iso(NOW + timedelta(minutes=10))},
+        {"id": i2.item_id, "body": story, "anchor": "prop:adoption",
+         "available_for_decision_at": iso(NOW + timedelta(minutes=40)),
+         "attributes_to": "Global Wire"},
+        {"id": i3.item_id, "body": other, "anchor": "prop:adoption",
+         "available_for_decision_at": iso(NOW + timedelta(minutes=55))},
+    ]
+    ec = evidence.cluster_items(con, ev_items, cluster_version=1)[0]
+    ok("the three items form one anchored cluster", len(ec.item_ids) == 3)
+
+    claim_id, eff_src = evidence.record_claim(
+        con, cluster_id=ec.cluster_id, cluster_version=1,
+        assertion="The committee recorded the measure as adopted",
+        authenticity="artifact_verified", extraction_fidelity="checked_faithful",
+        establishes="underlying_fact", source_ids=[wire, herald, desk],
+        available_for_decision_at=iso(NOW + timedelta(hours=1)),
+        feature_version="ev-1", primary_artifact_id=i1.item_id,
+        now=iso(NOW + timedelta(hours=1)))
+    ok("three sources, one of them a syndicated copy, are worth fewer than three",
+       eff_src.n_eff < 3.0, eff_src.summary())
+    print(f"        {eff_src.summary()}")
+
+    _, contrib = evidence.record_effect(
+        con, claim_id=claim_id, contract_id=cid, horizon_days=9.0, llr=1.4,
+        estimator="fitted_model", model_version="eff-1",
+        conditioned_on_ref="manifest/I-at-t",
+        available_for_decision_at=iso(NOW + timedelta(hours=1)),
+        now=iso(NOW + timedelta(hours=1)))
+    evidence.record_effect(
+        con, claim_id=claim_id, contract_id=cid, horizon_days=9.0, llr=3.0,
+        estimator="llm_proposed_unvalidated", model_version="eff-1",
+        conditioned_on_ref="prompt/bundle-1",
+        available_for_decision_at=iso(NOW + timedelta(hours=1)),
+        now=iso(NOW + timedelta(hours=1)))
+
+    decide_at = iso(NOW + timedelta(hours=2))
+    contribs = evidence.usable_contributions(con, cid, decide_at, "eff-1", 9.0)
+    ok("the forecast sees the fitted effect and not the LLM's proposal",
+       len(contribs) == 1 and abs(contribs[0] - contrib.final) < 1e-12, contribs)
+    early = evidence.usable_contributions(
+        con, cid, iso(NOW + timedelta(minutes=30)), "eff-1", 9.0)
+    ok("a forecast made before the evidence was verified sees nothing",
+       early == [], early)
+
+    ev_base = models.baseline_forecast(rc_preview, time_remaining=1.0)
+    ev_fc = models.independent_forecast(ev_base, contribs, lambda_sig=1.0,
+                                        lambda_version="v1")
+    ok("evidence moved the estimate off the baseline",
+       ev_fc.p_est_bp > ev_base.p_est_bp, (ev_base.p_est_bp, ev_fc.p_est_bp))
+    ok("...and widened the interval rather than narrowing it",
+       ev_fc.width_bp() > ev_base.width_bp())
+    ok("a forecast with no retrieved evidence is exactly the baseline",
+       models.independent_forecast(ev_base, early).p_est_bp == ev_base.p_est_bp)
+    print(f"        baseline {ev_base.p_est_bp}bp -> evidence {ev_fc.p_est_bp}bp "
+          f"(contribution {contrib.summary()})")
 
     # ---------------------------------------------------- the record
     print("\n[5] Twelve regimes of forecasts through the real ledger\n")

@@ -254,7 +254,13 @@ CREATE TABLE claim_contract_effects (
     available_for_decision_at TEXT NOT NULL,
     computed_at         TEXT NOT NULL,
     CHECK (abs(final_contribution) <= contribution_cap),
-    UNIQUE (claim_id, contract_id, model_version, computed_at)
+    -- horizon_days belongs in the key: one fact moves "floor vote this month"
+    -- and "law this year" by different amounts (v2 section 6), so the two are
+    -- separate effects, not a collision. So does estimator: an LLM's proposed
+    -- ratio and a fitted estimate of the same quantity are different objects,
+    -- and holding both side by side is how the proposal gets checked rather
+    -- than trusted.
+    UNIQUE (claim_id, contract_id, horizon_days, estimator, model_version, computed_at)
 ) STRICT;
 
 CREATE TRIGGER effects_append_only BEFORE UPDATE ON claim_contract_effects

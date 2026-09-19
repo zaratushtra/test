@@ -12,7 +12,9 @@ prediction markets.
 | 0 · Feasibility | **partly resolved** | Jurisdiction declared: UK, **paper-only** posture (design §2.1). Market screen still needs network access from a host outside the build sandbox. PolyBench audit complete (failed — see `PHASE0-FINDINGS.md`). |
 | 1 · Ledger & registry | **passed** | 33/33 `tests/test_phase1.py`, 39/39 `db/test_schema_v2.py` — see `docs/PHASE1-REPORT.md` |
 | 2 · Narrow forecasting | **passed on fixtures** | 67/67 + 43/43 + 54/54 end-to-end. Scoring, decision, models, ablations and the contract registry are built and joined; only *live* market data is blocked on network access. See `docs/PHASE2-REPORT.md` |
-| 3–6 | specification | — |
+| — · Evidence pipeline | **built, fixtures only** | 68/68 `tests/test_evidence.py` — ingestion, deduplication, effective sources, claims, contradictions, influence budget. See `docs/EVIDENCE-REPORT.md` |
+| 3 · Prospective evaluation | blocked | Needs live data and calendar time: ≥12 regimes of pre-registered forecasts |
+| 4–6 | specification | — |
 
 **Paper only.** Operations are UK-based, where Polymarket is close-only on both
 frontend and API. Live trading is out of scope; the decision layer is a research
@@ -34,9 +36,11 @@ phase0/                   market screen, vintage audit, throughput pilot
 phase1/serial_dependence.py   the analysis that invalidated the original gate
 phase1/sequential_peeking.py  what unbudgeted peeking costs, and the fix
 spine/registry.py         screened markets -> contracts; rules-version identity
+spine/evidence.py         signals -> claims -> contract effects; the influence budget
 tests/test_phase1.py      Phase 1 validation
 tests/test_phase2.py      Phase 2 validation — scoring, decision
 tests/test_phase2b.py     Phase 2 validation — models, ablations
+tests/test_evidence.py    evidence pipeline validation
 tests/test_e2e.py         end-to-end: screen -> registry -> ledger -> score -> decide
 run_tests.py              runs every suite
 docs/                     phase reports, the external review, and its disposition
@@ -47,7 +51,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # all five suites, 236 checks
+python3 run_tests.py              # all six suites, 312 checks
 ```
 
 Individually:
@@ -57,6 +61,7 @@ python3 db/test_schema_v2.py      # schema guarantees
 python3 tests/test_phase1.py      # ledger, chain, availability discipline
 python3 tests/test_phase2.py      # scoring, decision, abstention
 python3 tests/test_phase2b.py     # models, hazard, ablations
+python3 tests/test_evidence.py    # ingestion, dedup, n_eff, influence budget
 python3 tests/test_e2e.py         # the whole pipeline on one dataset
 python3 phase1/serial_dependence.py    # power and serial dependence analysis
 python3 phase1/sequential_peeking.py   # cost of peeking; alpha-spending check
@@ -68,7 +73,7 @@ module, which is how two components can both pass and still not join.
 
 Stdlib only; no installs. Requires Python 3.10+ and SQLite 3.37+ (STRICT tables).
 
-## Two results worth knowing before reading anything else
+## Three results worth knowing before reading anything else
 
 **The probability firewall was removed.** Capping the probability of an event by
 horizon class confuses it with confidence in the estimate; the v1 schema rejected
@@ -81,3 +86,11 @@ pure noise up to 38% of the time — running longer makes it marginally worse.
 Scoring now groups by `regime_id` and requires at least 12 independent regimes —
 and `spine/scoring.py` exports no week-level bootstrap at all, so the invalid
 path cannot be taken by accident.
+
+**Lexical similarity finds duplication, not events.** Two independent reports of
+one committee vote shared two content words out of thirty-five — Jaccard 0.061,
+shingle overlap 0.000. No threshold separates that from unrelated text, because
+independent reporting of the same event *is* lexically unrelated; that is what
+makes it independent. Signal collection is therefore query-driven from the
+contract registry, and text similarity is used only for the job it is good at:
+collapsing syndicated copies. See `docs/EVIDENCE-REPORT.md` §3.

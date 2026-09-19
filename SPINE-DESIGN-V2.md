@@ -10,9 +10,9 @@ are real and tested; the rest is specification.
 No forecast has been made, nothing has been benchmarked, and no accuracy or profitability advantage
 has been demonstrated.
 
-**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** — every
+**Phase status:** 0 blocked on network access only · **1 PASSED** · **2 PASSED ON FIXTURES** · **§6–§7 evidence pipeline built** (`spine/evidence.py`, `docs/EVIDENCE-REPORT.md`) — every
 layer built and joined end to end (`tests/test_e2e.py`); what remains blocked is live market data,
-not code. 236 checks across 5 suites (`python3 run_tests.py`).
+not code. 312 checks across 6 suites (`python3 run_tests.py`).
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
 and API. Live trading is **out of scope** — see §2.1. Everything through Phase 3 is unaffected.
@@ -322,7 +322,19 @@ relevance; **an LLM-generated "likelihood ratio of 3.2" is not a measurement** a
 **The influence budget binds the final contribution**, including every scaling factor. v1 claimed
 `L_max ≈ 1.5` capped a cluster at 4.5:1, but the contribution was `λ_sig · w_c · LLR_c` with
 `w_c > 1` whenever `n_eff_sources > N_ref`. The cap did not hold. The schema now enforces
-`|final_contribution| ≤ contribution_cap` directly.
+`|final_contribution| ≤ contribution_cap` directly, and `spine/evidence.contribution()` forms the
+whole product before clamping, returning both the raw and the final value so the clamping is
+visible rather than silent.
+
+The **cap is derived from the claim's own verification state** and cannot be supplied by the caller,
+so a weak claim's influence cannot be widened by requesting a larger budget. It bounds exposure to a
+claim and never zeroes one: where a contract resolves on whether an authority published an
+announcement, the announcement *is* the fact (§7.1), and a blanket zero would discard exactly those
+cases.
+
+An effect is keyed per **(claim, contract, horizon, estimator, model version, vintage)**. Retrieval
+is horizon-scoped: summing a claim's fourteen-day and one-year effects into one forecast
+double-counts the claim and mixes two incompatible questions.
 
 ---
 
@@ -353,6 +365,24 @@ heuristic would wrongly discount it.
 Build a provenance graph: **artifact → extracted claim → cited upstream evidence → reporting origin
 → contract.** Use textual overlap, explicit attribution, timestamps and reporting descriptions to
 identify shared evidence. Ownership and co-publication are clues, not determinations.
+
+**Correction from implementation (`docs/EVIDENCE-REPORT.md` §3): textual overlap groups duplicates,
+never events.** Measured here, two independent reports of one committee vote shared two content
+words out of thirty-five — Jaccard 0.061, containment 0.118, 5-shingle overlap 0.000. No threshold
+separates that from unrelated text, and the reason is structural: independent reporting of the same
+event is lexically unrelated, which is what makes it independent.
+
+Signal collection is therefore **query-driven from the contract registry** — items are retrieved
+*for* a registered proposition, so the event anchor is known at ingest and never inferred. Text
+similarity is retained for the job it actually does: collapsing syndicated and near-copied
+artifacts. Unanchored items fall back to lexical linkage and will under-merge, which is the safe
+direction: an item wrongly left out is evidence unused, while one wrongly merged in is evidence
+miscounted.
+
+An unmeasured source pair is **assumed correlated at a declared floor, never independent**. Assuming
+independence is the flattering direction and must not be the default; `n_eff` is additionally
+clamped at the headcount, because an estimate should never claim more independent sources than
+there are sources.
 
 `n_eff_sources` is retained as a summary but is now computed from *error-correlation* estimates with
 an explicit `basis` field recording how each was derived, including `assumed`.
