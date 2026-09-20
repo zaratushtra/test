@@ -9,7 +9,8 @@ from datetime import datetime, timedelta, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from spine import ledger, models, refclass, registry, timeutil  # noqa: E402
+from spine import (ledger, models, params, refclass,  # noqa: E402
+                   registry, timeutil)
 
 NOW = datetime(2026, 9, 20, 8, 0, 0, tzinfo=timezone.utc)
 
@@ -45,8 +46,10 @@ def build_two_forecasts(con) -> tuple[str, str]:
             timeutil.iso(created + timedelta(days=9)), "committee_adoption",
             "T1", now=timeutil.iso(created))
         fc = models.baseline_forecast(rc, time_remaining=1.0)
-        mh = ledger.put_manifest(con, "forecast_inputs", {"q": i},
-                                 timeutil.iso(created))
+        mh = ledger.put_manifest(
+            con, "forecast_inputs",
+            {"q": i, "params": params.commit(con, timeutil.iso(created))},
+            timeutil.iso(created))
         hashes.append(ledger.register_forecast(
             con, proposition_id=pid, contract_id=cid, p_est_bp=fc.p_est_bp,
             p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp,

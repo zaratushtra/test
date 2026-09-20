@@ -17,8 +17,8 @@ from datetime import datetime, timedelta, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from spine import (evaluate, ledger, models, refclass,  # noqa: E402
-                   registry, timeutil)
+from spine import (evaluate, ledger, models, params,  # noqa: E402
+                   refclass, registry, timeutil)
 from spine.evaluate import EvaluationError  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 
@@ -96,8 +96,11 @@ def build(con, n_regimes=12, per=10, seed=5):
             base = models.baseline_forecast(RC, time_remaining=1.0)
             shift = models.logit(truth) - models.logit(base.p_est_bp / 10000)
             fc = models.independent_forecast(base, [shift * 0.9])
-            mh = L.put_manifest(con, "forecast_inputs", {"q": f"{g}_{i}"},
-                                timeutil.iso(created))
+            mh = L.put_manifest(
+                con, "forecast_inputs",
+                {"q": f"{g}_{i}",
+                 "params": params.commit(con, timeutil.iso(created))},
+                timeutil.iso(created))
             fh = L.register_forecast(
                 con, proposition_id=pid, contract_id=cid, p_est_bp=fc.p_est_bp,
                 p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp,
@@ -384,7 +387,9 @@ def main() -> int:
     cid5, _ = build(ledger.connect(":memory:", create=True), n_regimes=1, per=1)
     con5 = ledger.connect(":memory:", create=True)
     build(con5, n_regimes=1, per=1)
-    mh5 = L.put_manifest(con5, "forecast_inputs", {"q": "tz"}, at(days=1))
+    mh5 = L.put_manifest(con5, "forecast_inputs",
+                         {"q": "tz", "params": params.commit(con5, at(days=1))},
+                         at(days=1))
     kw = dict(proposition_id=1, contract_id=1, p_est_bp=5000, p_lo_bp=4000,
               p_hi_bp=6000, uncertainty_method="x", min_width_bp=0,
               p_base_bp=5000, forecast_kind="independent",

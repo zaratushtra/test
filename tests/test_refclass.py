@@ -24,7 +24,8 @@ from datetime import datetime, timedelta, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from spine import ledger, models, refclass, registry, timeutil  # noqa: E402
+from spine import (ledger, models, params, refclass,  # noqa: E402
+                   registry, timeutil)
 from spine.refclass import Member, RefClassError  # noqa: E402
 
 PASS, FAIL = [], []
@@ -196,7 +197,9 @@ def main() -> int:
     fc = models.baseline_forecast(rc, time_remaining=time_remaining)
     mh = ledger.put_manifest(con, "forecast_inputs",
                              {"reference_class_version_id": cid,
-                              "time_remaining": time_remaining}, at(hours=2))
+                              "time_remaining": time_remaining,
+                              "params": params.commit(con, at(hours=2))},
+                             at(hours=2))
     fh = ledger.register_forecast(
         con, proposition_id=pid, contract_id=contract, p_est_bp=fc.p_est_bp,
         p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp,

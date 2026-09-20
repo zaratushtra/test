@@ -27,8 +27,8 @@ sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
 from spine import (ablation, chain, decision, evaluate, evidence,  # noqa: E402
-                   ledger, models, refclass, registry, scoring, shadow,
-                   sizing)
+                   ledger, models, params, refclass, registry, scoring,
+                   shadow, sizing)
 from spine.ablation import Variant  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 from spine.registry import RegistryError  # noqa: E402
@@ -326,7 +326,8 @@ def main() -> int:
                 con, "forecast_inputs",
                 {"reference_class": "committee_adoption@1",
                  "contributions": [round(contribution * 0.9, 6)],
-                 "question": key},
+                 "question": key,
+                 "params": params.commit(con, iso(created))},
                 iso(created))
             fh = ledger.register_forecast(
                 con, proposition_id=p_id, contract_id=cid,
@@ -349,7 +350,9 @@ def main() -> int:
            p_hi_bp=5010, uncertainty_method="x", min_width_bp=300, p_base_bp=5000,
            forecast_kind="independent", reference_class_version_id=rcid,
            inputs_manifest_hash=registered[0][3] and ledger.put_manifest(
-               con, "forecast_inputs", {"q": "narrow"}, iso(NOW)),
+               con, "forecast_inputs",
+               {"q": "narrow", "params": params.commit(con, iso(NOW))},
+               iso(NOW)),
            model_version="e2e-1", regime_id="regime0", created_at=iso(NOW),
            source="model"), sqlite3.IntegrityError))
     ok("an independent forecast carrying a market price is refused",
@@ -359,7 +362,9 @@ def main() -> int:
            p_market_bp=5100, forecast_kind="independent",
            reference_class_version_id=rcid,
            inputs_manifest_hash=ledger.put_manifest(
-               con, "forecast_inputs", {"q": "peeked"}, iso(NOW)),
+               con, "forecast_inputs",
+               {"q": "peeked", "params": params.commit(con, iso(NOW))},
+               iso(NOW)),
            model_version="e2e-1", regime_id="regime0", created_at=iso(NOW),
            source="model"), ledger.LedgerError))
 

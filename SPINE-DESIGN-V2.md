@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 872 checks across 17 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 880 checks across 17 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -477,6 +477,18 @@ calibration inside the same temporal discipline.
 v1 named λ and λ_sig. Also tunable: reference-class selection, feature weights, ρ, clustering
 thresholds, source weights, market-selection rules. **All are researcher degrees of freedom and all
 belong in the governance record.**
+
+`spine/params.py` is that record, and it is enforced rather than kept: **`register_forecast()`
+refuses a forecast whose inputs manifest does not commit to a parameter snapshot.** Listing the
+tunables in a module is not governance — a setting not recorded at the moment a forecast was made is
+one that can be adjusted afterwards with nothing in the record to show it, and two forecasts made
+under different configurations would be indistinguishable.
+
+The snapshot is content-addressed and stored as a `model_config` manifest, so "these two forecasts
+were made under the same configuration" becomes a checkable statement rather than a recollection. It
+carries each parameter's **provenance** alongside its value, which is the part that matters when
+reading the record later: a number that was `declared` when the forecast was made and `measured`
+now is a different situation from one that never moved.
 
 ---
 

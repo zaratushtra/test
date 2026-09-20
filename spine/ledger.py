@@ -228,6 +228,28 @@ def register_forecast(con: sqlite3.Connection, **fields) -> str:
             "register inputs before the forecast that commits to them"
         )
 
+    # §8.4: every researcher degree of freedom belongs in the governance record.
+    # Listing the tunable parameters in a module is not that — a setting not
+    # recorded at the moment the forecast was made is one that can be adjusted
+    # afterwards with nothing in the record to show it, and two forecasts made
+    # under different configurations would be indistinguishable.
+    from . import params as _params
+    ref = _params.committed_in(con, fields["inputs_manifest_hash"])
+    if ref is None:
+        raise LedgerError(
+            "the inputs manifest does not commit to a parameter snapshot. Add "
+            "'params': params.commit(con, created_at) to it — §8.4 counts "
+            "clustering thresholds, influence caps and the rest as researcher "
+            "degrees of freedom, and a forecast that does not record which were "
+            "in force cannot be told apart from one made under different ones"
+        )
+    if not con.execute("SELECT 1 FROM manifests WHERE manifest_hash=? AND "
+                       "kind='model_config'", (ref,)).fetchone():
+        raise LedgerError(
+            f"parameter snapshot {ref[:12]}... is not stored as a model_config "
+            "manifest; commit the parameters before the forecast citing them"
+        )
+
     prev = head(con)
     row = {k: fields.get(k) for k in (*_REQUIRED, *_OPTIONAL)}
     fh = compute_hash(row, prev)

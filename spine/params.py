@@ -38,6 +38,7 @@ accumulates.
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 
 MEASURED, DERIVED, DECLARED, EXTERNAL = "measured", "derived", "declared", "external"
@@ -261,3 +262,66 @@ if __name__ == "__main__":
     print("\nTaken on faith:\n")
     for p in unsupported():
         print(f"  {p.where}\n      -> {p.replaced_by}\n")
+
+
+# ---------------------------------------------------------------------------
+# the governance record (§8.4)
+# ---------------------------------------------------------------------------
+
+def snapshot() -> dict:
+    """
+    Every registered parameter and its current value, canonically ordered.
+
+    §8.4: "v1 named λ and λ_sig. Also tunable: reference-class selection,
+    feature weights, ρ, clustering thresholds, source weights, market-selection
+    rules. **All are researcher degrees of freedom and all belong in the
+    governance record.**"
+
+    Listing them in a module is not a governance record. A degree of freedom
+    that is not recorded *at the moment a forecast was made* is one that can be
+    adjusted afterwards, and the record will not show it — two forecasts made
+    under different settings would be indistinguishable, which is precisely the
+    freedom §8 exists to close.
+    """
+    return {
+        "parameters": {
+            p.where: {"value": p.value, "provenance": p.provenance}
+            for p in sorted(PARAMS, key=lambda q: q.where)
+        },
+        "declared_count": len(unsupported()),
+        "total_count": len(PARAMS),
+    }
+
+
+def commit(con: sqlite3.Connection, created_at: str) -> str:
+    """
+    Store the current parameter snapshot as a manifest and return its hash.
+
+    Content-addressed, so the same settings store once and a changed setting
+    produces a different hash — which is what makes "these two forecasts were
+    made under the same configuration" a checkable statement rather than a
+    recollection.
+    """
+    from .ledger import put_manifest
+    return put_manifest(con, "model_config", snapshot(), created_at)
+
+
+def committed_in(con: sqlite3.Connection, manifest_hash: str) -> str | None:
+    """The parameter-snapshot hash an inputs manifest commits to, if any."""
+    import json
+    row = con.execute("SELECT content FROM manifests WHERE manifest_hash=?",
+                      (manifest_hash,)).fetchone()
+    if not row:
+        return None
+    try:
+        content = json.loads(row[0])
+    except (json.JSONDecodeError, TypeError):
+        return None
+    ref = content.get("params") if isinstance(content, dict) else None
+    return ref if isinstance(ref, str) else None
+
+
+def matches_current(con: sqlite3.Connection, params_hash: str) -> bool:
+    """Whether a stored snapshot is the configuration running right now."""
+    from .canonical import content_hash
+    return params_hash == content_hash(snapshot())

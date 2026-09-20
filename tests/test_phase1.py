@@ -18,7 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spine import chain, ledger  # noqa: E402
+from spine import chain, ledger, params  # noqa: E402
 from spine.canonical import (  # noqa: E402
     GENESIS_HASH,
     CanonicalisationError,
@@ -116,7 +116,8 @@ def reg(con, **kw):
     base.update(kw)
     if "inputs_manifest_hash" not in base:
         base["inputs_manifest_hash"] = ledger.put_manifest(
-            con, "forecast_inputs", {"claims": [], "note": "empty"}, T
+            con, "forecast_inputs",
+            {"claims": [], "note": "empty", "params": params.commit(con, T)}, T
         )
     return ledger.register_forecast(con, **base)
 
@@ -261,15 +262,13 @@ def main() -> int:
         ("2026-06-01T09:30:00.000Z", "2026-06-01T09:30:00.000Z"),
     )
     con.commit()
-    mh = ledger.put_manifest(
-        con, "forecast_inputs",
-        {"claims": ["cl_a"], "lambda_version": "v1", "prompt_bundle": None}, T,
-    )
+    inputs = {"claims": ["cl_a"], "lambda_version": "v1", "prompt_bundle": None,
+              "params": params.commit(con, T)}
+    mh = ledger.put_manifest(con, "forecast_inputs", inputs, T)
     fh = reg(con, contract_id=1, inputs_manifest_hash=mh)
     r = ledger.reconstruct(con, fh)
     ok("reconstruction returns the committed manifest content",
-       r["manifest_content"] == canonicalise(
-           {"claims": ["cl_a"], "lambda_version": "v1", "prompt_bundle": None}))
+       r["manifest_content"] == canonicalise(inputs))
     ok("reconstruction returns the frozen reference class",
        r["reference_class"]["class_name"] == "fed_holds"
        and r["reference_class"]["frozen_at"] == T)
@@ -278,6 +277,31 @@ def main() -> int:
        and r["effects_at_decision"][0]["final_contribution"] == 0.6)
     ok("recomputing the hash from stored fields reproduces it",
        chain.compute_hash(r, r["prev_hash"]) == fh)
+
+    print("\n[7b] Every forecast commits the parameters in force (§8.4)\n")
+    con = seeded()
+    bare = ledger.put_manifest(con, "forecast_inputs", {"claims": []}, T)
+    ok("a manifest with no parameter snapshot is refused",
+       raises(lambda: reg(con, inputs_manifest_hash=bare), ledger.LedgerError))
+    ok("...and the message says why a degree of freedom must be recorded",
+       "cannot be told apart from one made under different ones" in _message(
+           lambda: reg(con, inputs_manifest_hash=bare)))
+    ok("a manifest citing an unstored snapshot is refused",
+       raises(lambda: reg(con, inputs_manifest_hash=ledger.put_manifest(
+           con, "forecast_inputs", {"params": "0" * 64}, T)),
+           ledger.LedgerError))
+    good = ledger.put_manifest(
+        con, "forecast_inputs", {"claims": [], "params": params.commit(con, T)}, T)
+    fh_p = reg(con, inputs_manifest_hash=good)
+    ok("a manifest that commits them is accepted", len(fh_p) == 64)
+    ok("the snapshot is recoverable from the forecast",
+       params.committed_in(con, good) is not None)
+    ok("...and identifies the configuration running now",
+       params.matches_current(con, params.committed_in(con, good)))
+    ok("the snapshot records provenance, not just values",
+       all("provenance" in v for v in params.snapshot()["parameters"].values()))
+    ok("a changed setting would produce a different snapshot",
+       params.snapshot()["declared_count"] == len(params.unsupported()))
 
     print("\n[8] A database at the wrong schema version is refused\n")
     import sqlite3 as _sq
