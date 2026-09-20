@@ -32,6 +32,11 @@ PASS, FAIL = [], []
 # Constants that are structural rather than tunable: type tags, SQL fragments,
 # genesis sentinels. Registering these would bury the numbers that matter.
 EXEMPT_NAMES = {
+    # Checked against PRAGMA user_version by tests/test_docs.py. Registering it
+    # here would be a second source of truth for one value, which is what this
+    # registry exists to prevent -- and it went stale on the first schema bump
+    # after being added, which is how that was noticed.
+    "SCHEMA_VERSION",
     "COMMITTED_FIELDS", "GENESIS_HASH", "SCHEMA_PATH", "PAPER", "LIVE",
     "TRADEABLE", "BINARY_PAYOUTS", "SCORABLE", "SCORABLE_OUTCOMES",
     "EXCLUSIONS", "STOPWORDS", "SPENDING", "ALL_SLICES", "GAMMA_BASE",

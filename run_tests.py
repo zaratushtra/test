@@ -24,6 +24,7 @@ SUITES = [
     ("evidence pipeline", "tests/test_evidence.py"),
     ("shadow execution", "tests/test_shadow.py"),
     ("signal collection", "tests/test_collect.py"),
+    ("untrusted input", "tests/test_untrusted.py"),
     ("venue access and the cycle", "tests/test_venue.py"),
     ("evaluation: scores, settlement, DAG", "tests/test_evaluate.py"),
     ("end-to-end integration", "tests/test_e2e.py"),

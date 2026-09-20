@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 723 checks across 14 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 777 checks across 15 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -638,6 +638,27 @@ Retrieved news and documents are untrusted throughout. They must never be able t
 system to execute tools, expose secrets or alter trading controls. **The signer and the risk checks
 sit outside any LLM's authority.** v1 did not address this at all.
 
+Implemented in `spine/untrusted.py`. There is no LLM in the pipeline yet, so the prompt-injection
+half is not live; the other half already is, because this project ingests open-internet text into a
+database and then adjudicates it.
+
+**Display-altering characters get a split treatment, and the split is the point.** A bidirectional
+override makes text render in an order other than the one it is stored in, so a claim that hashes
+one way reads another way to the human adjudicating it — `RAISE` and `\u202e`+`ESIAR` are different
+bytes, the same picture, and one signature. Source text is therefore **preserved verbatim and
+flagged**: if a publisher really emitted an override, that is a fact about the publisher and
+stripping it destroys evidence. Our own `claims.assertion` is **refused**, because nothing
+legitimate needs an invisible reordering control in text we wrote.
+
+**A link is not a document.** `javascript:`, `data:` and `file:` are instructions waiting for
+something to follow them. The scheme is checked at ingest, the unsafe value is dropped rather than
+stored, and the rejection is recorded — the article is still evidence when its link is not usable.
+A stored hazard is a hazard on the day something reads it, not the day it arrives, and this project
+will grow a reporting surface.
+
+SQL injection is closed by construction rather than by filtering: a test walks the AST of every
+module and asserts that no `execute()` f-string interpolates anything but an internal column list.
+
 ---
 
 ## 12. Evaluation programme
@@ -760,7 +781,7 @@ Every tunable number is registered in `spine/params.py` with its provenance, and
 | `external` | a fact about the world or a venue, dated | re-checking, because these expire |
 | `declared` | somebody chose it | nothing here supports it |
 
-**14 of 21 are `declared`.** That is the honest state of a project with no record yet, and stating it
+**15 of 23 are `declared`.** That is the honest state of a project with no record yet, and stating it
 as a proportion is more useful than defending each one individually. A `declared` entry must name
 what would replace it — the registry refuses to construct one otherwise, because a declared
 parameter with no replacement path is indistinguishable from a measurement nobody made.

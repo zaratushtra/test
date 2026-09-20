@@ -23,6 +23,14 @@ So each is registered with its **provenance**:
 registered, so a new magic number cannot arrive unannounced. That is the point:
 the registry is worth little as documentation and quite a lot as a gate.
 
+**A number checked somewhere else does not belong here.** `SCHEMA_VERSION` was
+registered on the reasoning that the registry should cover every constant, and
+promptly went stale on the next schema bump — two sources of truth for one value
+is exactly the failure this module exists to prevent. It is exempt, and
+`tests/test_docs.py` checks it against `PRAGMA user_version` where the real
+comparison lives. The registry is for numbers that were *chosen*, not for
+numbers that must agree with something.
+
 `unsupported()` lists everything `declared`. It is the project's own list of
 things it is currently taking on faith, and it should shrink as the record
 accumulates.
@@ -165,15 +173,31 @@ PARAMS: list[Param] = [
           "hundred bytes into gigabytes.",
           replaced_by="nothing; this is a safety limit, not an estimate"),
 
+    Param("safe url schemes", "http, https", "spine/untrusted.SAFE_URL_SCHEMES",
+          DECLARED,
+          "The only schemes that denote a document you could go and read. "
+          "javascript:, data: and file: are instructions waiting to be "
+          "followed, and a stored hazard is a hazard on the day something reads "
+          "it rather than the day it arrives (§11.3).",
+          replaced_by="nothing; this is a safety boundary, not an estimate. It "
+                      "would widen only if a real source served articles over "
+                      "another scheme"),
+
     # --------------------------------------------------------------- external
+    Param("bidirectional controls", "13 codepoints",
+          "spine/untrusted.BIDI_CONTROLS", EXTERNAL,
+          "The Unicode bidi formatting characters, as of Unicode 15 (2026). "
+          "They reorder rendered text without changing the bytes, so what is "
+          "hashed and what is read differ — Trojan Source, CVE-2021-42574."),
+    Param("zero-width characters", "4 codepoints", "spine/untrusted.ZERO_WIDTH",
+          EXTERNAL,
+          "ZWSP, ZWNJ, ZWJ and BOM as of Unicode 15 (2026): invisible, and they "
+          "defeat naive equality and search."),
     Param("close-only jurisdictions", "GB, UK",
           "spine/registry.CLOSE_ONLY", EXTERNAL,
           "Verified 19 Sep 2026: Polymarket is close-only on both frontend and "
           "API in the UK. A venue geoblock policy, not an authority — re-check "
           "before relying on it."),
-    Param("schema version", 7, "spine/ledger.SCHEMA_VERSION", EXTERNAL,
-          "Must match PRAGMA user_version in db/schema_v2.sql. Not a tunable; "
-          "registered so the registry covers every module-level constant."),
 ]
 
 BY_WHERE = {p.where: p for p in PARAMS}

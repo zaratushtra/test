@@ -37,6 +37,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
+from . import untrusted
 from .canonical import content_hash
 from . import timeutil
 
@@ -191,6 +192,12 @@ def ingest_item(
             "available_for_decision_at precedes first_seen_at: an item cannot be "
             "usable by a decision before the collector saw it")
 
+    # Source text is preserved verbatim and flagged (§11.3). The hash covers
+    # exactly what arrived, so a flagged item is still a faithful record of what
+    # the publisher emitted — which is the thing a reader needs warning about.
+    warnings = untrusted.describe(f"{title or ''}\n{body}")
+    safe_url, url_reason = untrusted.check_url(url)
+
     h = content_hash({"body": body.strip()})
 
     existing = con.execute(
@@ -207,21 +214,30 @@ def ingest_item(
         """INSERT INTO signal_items
            (content_hash, source_id, url, event_at, claimed_published_at,
             first_seen_at, artifact_created_at, available_for_decision_at,
-            title, body_ref, item_class)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-        (h, source_id, url, event_at, claimed_published_at, _iso(seen),
-         _canon(now) if now else _now(), _iso(avail), title, body_ref, item_class))
+            title, body_ref, item_class, display_warnings, rejected_url_reason)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (h, source_id, safe_url, event_at, claimed_published_at, _iso(seen),
+         _canon(now) if now else _now(), _iso(avail), title, body_ref,
+         item_class, warnings, url_reason))
     item_id = cur.lastrowid
     con.commit()
 
-    note = ""
+    note_parts = []
+    if warnings:
+        note_parts.append(f"display warning: {warnings}")
+    if url_reason:
+        note_parts.append(f"url dropped: {url_reason}")
+
+    note = "; ".join(note_parts)
     if others:
         # Byte-identical text under a second masthead is syndication, not
         # corroboration. Record the correlation now, at the time it was
         # observed, so a later decision sees it and an earlier one does not.
         n = record_syndication(con, item_id, others, computed_at=_iso(avail))
-        note = (f"identical content already held from {len(others)} other source(s); "
-                f"{n} syndication correlation(s) recorded")
+        note_parts.append(
+            f"identical content already held from {len(others)} other source(s); "
+            f"{n} syndication correlation(s) recorded")
+        note = "; ".join(note_parts)
     return Ingested(item_id, h, others, note)
 
 
@@ -537,6 +553,13 @@ def record_claim(
     """
     if not source_ids:
         raise EvidenceError("a claim needs at least one source")
+    # Our own text, and a human will adjudicate it. §11.3: nothing legitimate
+    # needs an invisible reordering control, and a claim that hashes one way and
+    # reads another defeats the point of recording it.
+    try:
+        untrusted.require_display_safe(assertion, "assertion")
+    except untrusted.UntrustedInputError as e:
+        raise EvidenceError(str(e)) from e
     eff = n_eff_sources(con, source_ids, available_for_decision_at)
     h = content_hash({
         "cluster_id": cluster_id, "cluster_version": cluster_version,

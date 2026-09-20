@@ -33,7 +33,7 @@ PRAGMA busy_timeout = 5000;
 -- which is how a query silently returns nothing and the absence gets read as
 -- evidence. Bump this whenever this file changes in a way that is not purely
 -- additive; ledger.SCHEMA_VERSION must match.
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;
 
 -- ============================================================================
 -- CANONICAL TIMESTAMPS
@@ -99,6 +99,15 @@ CREATE TABLE signal_items (
     available_for_decision_at TEXT NOT NULL CHECK (available_for_decision_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),   -- usable by a decision at or after this
     title                    TEXT,
     body_ref                 TEXT,
+    -- Source text is preserved verbatim and flagged, never sanitised: if a
+    -- publisher really emitted a bidirectional override, that is a fact about
+    -- the publisher, and stripping it destroys evidence. NULL means clean.
+    -- See spine/untrusted.py and design section 11.3.
+    display_warnings         TEXT,
+    -- A url the venue supplied that this project will not store as a reference:
+    -- javascript:, data:, file:. The article is still evidence; the link is an
+    -- instruction waiting for something to follow it.
+    rejected_url_reason      TEXT,
     item_class               TEXT NOT NULL CHECK (item_class IN
                                ('reportage','opinion','market_commentary',
                                 'primary_source','other')),
