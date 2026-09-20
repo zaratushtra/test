@@ -48,6 +48,50 @@ class LedgerError(RuntimeError):
     """A registration violated a discipline the ledger enforces."""
 
 
+def check_runtime() -> list[str]:
+    """
+    Capabilities this project needs, checked by trying them.
+
+    Version numbers are a proxy and a poor one: the README claimed Python 3.10+
+    and the real floor is 3.11, because `timeutil.parse` accepts fractional
+    seconds with one or two digits and `fromisoformat` only handled three or six
+    before 3.11 — a form real feeds emit and a test asserts. A version
+    comparison encodes somebody's recollection of a changelog; running the
+    operation does not.
+    """
+    problems = []
+
+    probe = sqlite3.connect(":memory:")
+    try:
+        probe.execute("CREATE TABLE t (a INTEGER) STRICT")
+    except sqlite3.OperationalError:
+        problems.append(
+            f"SQLite {sqlite3.sqlite_version} has no STRICT tables (needs "
+            "3.37+). Every table in this schema is STRICT, which is what keeps "
+            "a timestamp from being stored as a float")
+    try:
+        probe.execute("CREATE TABLE u (a INTEGER PRIMARY KEY)")
+        probe.execute("INSERT INTO u VALUES (1) ON CONFLICT DO NOTHING")
+    except sqlite3.OperationalError:
+        problems.append(
+            f"SQLite {sqlite3.sqlite_version} has no ON CONFLICT DO NOTHING "
+            "(needs 3.24+), which is how the idempotent creators avoid racing")
+    finally:
+        probe.close()
+
+    from datetime import datetime as _dt
+    for form in ("2026-09-19T13:00:00.5+00:00", "2026-09-19T13:00:00.12+00:00"):
+        try:
+            _dt.fromisoformat(form)
+        except ValueError:
+            problems.append(
+                f"datetime.fromisoformat cannot parse {form!r} (needs Python "
+                "3.11+). Feeds emit fractional seconds with one or two digits, "
+                "and every timestamp in this project passes through it")
+            break
+    return problems
+
+
 def connect(path: str = ":memory:", create: bool | None = None) -> sqlite3.Connection:
     """
     Open the ledger, refusing a database whose schema is not this one.
@@ -63,6 +107,12 @@ def connect(path: str = ":memory:", create: bool | None = None) -> sqlite3.Conne
     these databases yet, so the remedy is to recreate; when there is, this is
     where a migration goes.
     """
+    problems = check_runtime()
+    if problems:
+        raise LedgerError(
+            "this environment cannot run SPINE correctly:\n  - "
+            + "\n  - ".join(problems))
+
     con = sqlite3.connect(path)
     con.execute("PRAGMA foreign_keys = ON")
     con.execute("PRAGMA busy_timeout = 5000")

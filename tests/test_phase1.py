@@ -18,7 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spine import chain, ledger, params  # noqa: E402
+from spine import chain, ledger, params, timeutil  # noqa: E402
 from spine.canonical import (  # noqa: E402
     GENESIS_HASH,
     CanonicalisationError,
@@ -365,6 +365,60 @@ def main() -> int:
        all("provenance" in v for v in params.snapshot()["parameters"].values()))
     ok("a changed setting would produce a different snapshot",
        params.snapshot()["declared_count"] == len(params.unsupported()))
+
+    print("\n[7d] The runtime floor is checked by trying it, not by version\n")
+    ok("this environment has everything the project needs",
+       ledger.check_runtime() == [], ledger.check_runtime())
+    ok("the check tries STRICT rather than comparing a version string",
+       "CREATE TABLE t (a INTEGER) STRICT" in
+       __import__("inspect").getsource(ledger.check_runtime))
+    ok("...and tries the fractional-second forms feeds actually emit",
+       "13:00:00.5" in __import__("inspect").getsource(ledger.check_runtime))
+    ok("the real Python floor is 3.11, not the 3.10 the README claimed",
+       all(__import__("datetime").datetime.fromisoformat(f)
+           for f in ("2026-09-19T13:00:00.5+00:00",
+                     "2026-09-19T13:00:00.12+00:00")))
+    ok("...which timeutil.parse depends on and a test asserts",
+       timeutil.canonical("2026-09-19T13:00:00.5Z") == "2026-09-19T13:00:00.500Z")
+
+    print("\n[7e] Clustering does not depend on the order it is handed items\n")
+    # Cluster ids are committed into claim hashes, so a different assignment
+    # for the same data would make the record unreproducible. The sort by time
+    # was added for speed; this pins the reproducibility it also bought.
+    import random as _rnd
+    from spine import evidence as _ev
+    _r = _rnd.Random(3)
+    _vocab = [f"w{i}" for i in range(80)]
+    _bodies = [" ".join(_r.choice(_vocab) for _ in range(40)) + f" s{i}"
+               for i in range(12)]
+    _items = [{"id": i + 1, "body": _bodies[i % 12],
+               "available_for_decision_at":
+                   f"2026-06-{(i // 24) + 1:02d}T{i % 24:02d}:00:00.000Z"}
+              for i in range(30)]
+
+    def _cluster(order):
+        c = ledger.connect(":memory:", create=True)
+        src = _ev.ensure_source(c, "S", "outlet")
+        for it in _items:
+            c.execute(
+                "INSERT INTO signal_items(content_hash,source_id,first_seen_at,"
+                "artifact_created_at,available_for_decision_at,item_class) "
+                "VALUES(?,?,?,?,?,'reportage')",
+                (f"h{it['id']}", src, T, "x", it["available_for_decision_at"]))
+        c.commit()
+        return {cl.cluster_id: tuple(cl.item_ids)
+                for cl in _ev.cluster_items(c, order, cluster_version=1)}
+
+    baseline = _cluster(list(_items))
+    ok("the fixture actually merges things", len(baseline) < len(_items),
+       len(baseline))
+    shuffles = []
+    for seed in range(5):
+        sh = list(_items)
+        _rnd.Random(seed).shuffle(sh)
+        shuffles.append(_cluster(sh) == baseline)
+    ok("every shuffle reproduces the same cluster ids and membership",
+       all(shuffles), shuffles)
 
     print("\n[8] A database at the wrong schema version is refused\n")
     import sqlite3 as _sq

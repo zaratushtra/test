@@ -6,10 +6,16 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 
 ## Requirements
 
-Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
+Python 3.11+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
+
+`ledger.connect()` verifies both by *trying* them — creating a STRICT table, running an
+`ON CONFLICT DO NOTHING`, parsing the fractional-second forms feeds emit — and refuses with a
+named reason rather than failing later with a syntax error. A version comparison encodes
+somebody's recollection of a changelog; running the operation does not. The floor was documented
+as Python 3.10 until that check was written.
 
 ```bash
-python3 run_tests.py        # 22 suites, 1114 checks — run this first
+python3 run_tests.py        # 22 suites, 1121 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 

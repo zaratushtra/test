@@ -92,7 +92,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 22 suites, 1114 checks
+python3 run_tests.py              # 22 suites, 1121 checks
 python3 run_tests.py --docs       # and check what the documents claim
 python3 tests/trace_refusals.py --verify   # every guard is reached by some test
 ```
@@ -125,7 +125,11 @@ The end-to-end suite is the one that matters most and the one that was missing
 longest. Everything else validates a module against fixtures shaped for that
 module, which is how two components can both pass and still not join.
 
-Stdlib only; no installs. Requires Python 3.10+ and SQLite 3.37+ (STRICT tables).
+Stdlib only; no installs. Requires **Python 3.11+** and SQLite 3.37+.
+`ledger.connect()` checks both by trying them rather than comparing version
+strings — the floor was documented as 3.10 until a capability check found that
+`datetime.fromisoformat` only handles one- and two-digit fractional seconds
+from 3.11, a form real feeds emit.
 
 ## Five results worth knowing before reading anything else
 
