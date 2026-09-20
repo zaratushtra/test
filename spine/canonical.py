@@ -14,6 +14,8 @@ Follows RFC 8785 (JSON Canonicalization Scheme) for the subset we use:
 Deviations, deliberate and enforced rather than tolerated:
   * NaN and Infinity are rejected. They have no JSON representation and their
     presence in a committed payload means an upstream bug.
+  * Unpaired surrogates are rejected. RFC 8785 canonicalises *Unicode text*, and
+    a lone surrogate is not Unicode text — it has no UTF-8 encoding at all.
 
 Floats are permitted but discouraged. Probabilities are integers (basis points)
 precisely so the common path never touches float formatting.
@@ -38,13 +40,21 @@ exhausted the interpreter stack and raised `RecursionError` straight out of
 `venue.snapshot_books`: an exception nobody named escaping the module that was
 supposed to have decided what it means. A payload that deep is a bug or an
 attack, never a forecast, so it is refused by name.
+
+**Strings are checked for unpaired surrogates**, for the same reason and by the
+same argument. `json.loads('"\\ud800"')` happily returns a Python string holding
+a lone surrogate, and `venue._get` and `collect` both parse JSON from sources
+nobody here controls. Encoding one raises `UnicodeEncodeError` — out of
+`_es6_string` for a value, out of `_utf16_key` for a key — which is again an
+exception the integrity core never decided the meaning of, thrown from two
+different places, for data that arrived over the network.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import math
+import re
 from typing import Any
 
 GENESIS_HASH = "0" * 64
@@ -56,6 +66,12 @@ GENESIS_HASH = "0" * 64
 # frames). A self-referential structure has no depth at all, so it trips this
 # too — which is the intended answer, since it has no canonical form either.
 MAX_DEPTH = 64
+
+# A surrogate code point, which Python permits in a `str` and UTF-8 has no
+# encoding for. Matched rather than caught: `str.encode` would have to run twice
+# (once to test, once to emit) and would report the failure as a codec error
+# rather than as a statement about the payload.
+_SURROGATE = re.compile(r"[\ud800-\udfff]")
 
 
 class CanonicalisationError(ValueError):
@@ -79,12 +95,15 @@ def _check(value: Any, path: str = "$", depth: int = 0) -> None:
             raise CanonicalisationError(
                 f"{path}: NaN/Infinity cannot be committed to a hash"
             )
+    elif isinstance(value, str):
+        _check_text(value, path)
     elif isinstance(value, dict):
         for k, v in value.items():
             if not isinstance(k, str):
                 raise CanonicalisationError(
                     f"{path}: object keys must be strings, got {type(k).__name__}"
                 )
+            _check_text(k, f"{path}.<key>")
             _check(v, f"{path}.{k}", depth + 1)
     elif isinstance(value, (list, tuple)):
         for i, v in enumerate(value):
@@ -92,6 +111,17 @@ def _check(value: Any, path: str = "$", depth: int = 0) -> None:
     elif not isinstance(value, (str, int, bool, type(None))):
         raise CanonicalisationError(
             f"{path}: {type(value).__name__} has no canonical JSON form"
+        )
+
+
+def _check_text(value: str, path: str) -> None:
+    """Refuse a string that has no UTF-8 encoding, and say which character."""
+    m = _SURROGATE.search(value)
+    if m:
+        raise CanonicalisationError(
+            f"{path}: unpaired surrogate U+{ord(m.group()):04X} at index "
+            f"{m.start()}. It has no UTF-8 encoding, so it has no canonical "
+            "form; JSON input can carry one even though UTF-8 input cannot"
         )
 
 

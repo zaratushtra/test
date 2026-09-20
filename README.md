@@ -72,6 +72,7 @@ tests/test_scale.py       the hot paths at a year of record, not fixture size
 tests/test_concurrent.py  two processes, one database
 tests/test_refusals.py    every guard fires and explains itself
 tests/trace_refusals.py   measures which raise sites any suite reaches
+tests/interop_jcs.py      canonical form against ECMAScript, the spec's own authority
 tests/test_splits.py      purging, embargo, leakage verification
 tests/test_sizing.py      sizing, concentration, and not n_eff
 tests/test_untrusted.py   bidi overrides, hostile links, SQL parameterisation
@@ -92,10 +93,17 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 22 suites, 1127 checks
+python3 run_tests.py              # 22 suites, 1133 checks
 python3 run_tests.py --docs       # and check what the documents claim
 python3 tests/trace_refusals.py --verify   # every guard is reached by some test
+python3 tests/interop_jcs.py              # RFC 8785 conformance, against Node's V8
 ```
+
+The third reports **157 of 157 raise sites in `spine/` reached** — every refusal in the project
+is fired by some test, so none of them is a guard whose condition is inverted, or one that crashes
+on the way to raising. The last two to be covered were the ones that cannot fire in a working
+environment: the serialiser's own type check, which `canonicalise()` validates ahead of, and the
+runtime-capability gate, which by construction never trips on a machine that can run this.
 
 The second one matters more than it sounds. These documents make specific,
 checkable assertions — suite counts, file layouts, schema versions, section

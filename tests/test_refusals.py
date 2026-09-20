@@ -201,6 +201,26 @@ def main() -> int:
             lambda: canonical.content_hash(_nest(5000)),
             canonical.CanonicalisationError, "nested deeper")
 
+    # json.loads produces these from input nobody here controls -- venue._get
+    # and the collect path both parse JSON off the network -- and encoding one
+    # raised UnicodeEncodeError from two different places inside the module.
+    refuses("a lone surrogate in a value is refused by name",
+            lambda: canonical.content_hash(json.loads('{"t": "\\ud800x"}')),
+            canonical.CanonicalisationError, "unpaired surrogate")
+    refuses("...and in a key, where it broke the sort rather than the escaper",
+            lambda: canonical.content_hash({"\ud800": 1}),
+            canonical.CanonicalisationError, "unpaired surrogate")
+    ok("an astral character, which IS a surrogate pair in UTF-16, still hashes",
+       isinstance(canonical.content_hash({"\U0001F600": "\U0010FFFF"}), str))
+
+    # Reached only by calling the serialiser directly, since canonicalise()
+    # validates first. Checked anyway, because the alternative to raising here
+    # is falling off the end of the function and returning None -- a canonical
+    # form of `None` would hash, and the digest would be silently wrong.
+    refuses("the serialiser alone still refuses an untranslatable type",
+            lambda: canonical._serialise(object()),
+            canonical.CanonicalisationError, "no canonical JSON form")
+
     _cycle = {}
     _cycle["self"] = _cycle
     refuses("a payload containing itself is refused",
@@ -216,6 +236,20 @@ def main() -> int:
     refuses("deep nesting through lists is refused too",
             lambda: canonical.content_hash(_deep_list),
             canonical.CanonicalisationError, "nested deeper")
+    # The environment gate cannot fire on an environment that passes it, so the
+    # check is patched to report a problem. What is under test is that connect()
+    # refuses when told to, not what check_runtime() concludes here.
+    _real_check = ledger.check_runtime
+    ledger.check_runtime = lambda: ["fabricated capability, for this check only"]
+    try:
+        refuses("an environment missing a capability refuses to open a ledger",
+                lambda: ledger.connect(":memory:", create=True),
+                ledger.LedgerError, "cannot run SPINE correctly")
+    finally:
+        ledger.check_runtime = _real_check
+    ok("...and the real check passes on this machine", not ledger.check_runtime(),
+       ledger.check_runtime())
+
     refuses("anchoring an empty chain is refused",
             lambda: chain.anchor(ledger.connect(":memory:", create=True),
                                  "rfc3161", "r", "p", T),

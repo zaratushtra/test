@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 1127 checks across 22 suites (`python3 run_tests.py`), plus 32 documentation-consistency
+code.** 1133 checks across 22 suites (`python3 run_tests.py`), plus 32 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -595,6 +595,27 @@ nested a few hundred deep — or one holding a reference to itself — exhausted
 and raised `RecursionError` out of `content_hash()`, an exception the integrity core had never
 decided the meaning of. The deepest structure this project commits is four levels; past the limit
 it is a bug or an attack, and it is refused by name.
+
+Two refusals were added for the same reason: an exception escaping the integrity core that nothing
+had decided the meaning of. The other is **unpaired surrogates**. `json.loads('"\ud800"')` returns
+a Python string holding a lone surrogate, and both `venue._get` and the collection path parse JSON
+from sources nobody here controls; encoding one raises `UnicodeEncodeError`, out of the string
+escaper for a value and out of the key sorter for a key. RFC 8785 canonicalises *Unicode text*, and
+a lone surrogate is not Unicode text — it has no UTF-8 encoding at all — so refusing it by name is
+conformant as well as safe. An astral character is unaffected: in Python it is one code point, and
+it is only in the UTF-16 sort key that it becomes a surrogate pair.
+
+**And the conformance claim is now checked against ECMAScript itself.** RFC 8785 does not define
+number or string formatting; it delegates to `Number::toString` and `JSON.stringify`. Until now the
+claim rested on eleven hand-written number cases and a few key-ordering examples, all written from
+one reading of the spec by the same person who wrote the code — a shared misreading would have
+passed both. `tests/interop_jcs.py` compares against Node's V8, which is not a second opinion about
+the spec but the thing the spec points at: **50,000 doubles** across the whole bit space, and
+**6,000 random payloads** carrying astral keys, control characters, U+2028/9, a BOM, a bidi
+override, subnormals and the live parameter snapshot. Zero disagreements in canonical text and zero
+in SHA-256 digest. Re-injecting the original `repr` bug makes it fail on 820 of 5,000 numbers and
+179 of 600 payloads, so the check is known to be capable of failing. It is outside `run_tests.py`
+because it needs a second language runtime, and it skips — loudly, exit zero — where none exists.
 
 ### 9.3 A freeze timestamp proves almost nothing
 

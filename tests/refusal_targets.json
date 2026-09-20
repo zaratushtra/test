@@ -6,7 +6,9 @@
   ],
   "canonical.py": [
     "CanonicalisationError(f'prev_hash must be 64 hex chars, got {prev_hash!r}')",
-    "CanonicalisationError(f'{shown}: nested deeper than {MAX_DEPTH} levels, or contains a reference to itself. Either way it has no canonical form; serialising it would exhaust the stack rather than refuse')"
+    "CanonicalisationError(f'{path}: unpaired surrogate U+{ord(m.group()):04X} at index {m.start()}. It has no UTF-8 encoding, so it has no canonical form; JSON input can carry one even though UTF-8 input cannot')",
+    "CanonicalisationError(f'{shown}: nested deeper than {MAX_DEPTH} levels, or contains a reference to itself. Either way it has no canonical form; serialising it would exhaust the stack rather than refuse')",
+    "CanonicalisationError(f'{type(value).__name__} has no canonical JSON form')"
   ],
   "chain.py": [
     "ChainError('nothing to anchor: chain is empty')"
@@ -30,6 +32,7 @@
     "EvidenceError(f'unknown extraction_fidelity value {extraction_fidelity!r}')"
   ],
   "ledger.py": [
+    "LedgerError('this environment cannot run SPINE correctly:\\n - ' + '\\n - '.join(problems))",
     "LedgerError(f\"missing required field(s): {', '.join(missing)}\")",
     "LedgerError(f\"unknown field(s): {', '.join(sorted(unknown))}\")",
     "LedgerError(f'no forecast {forecast_hash[:12]}...')"

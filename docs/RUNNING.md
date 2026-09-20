@@ -15,9 +15,15 @@ somebody's recollection of a changelog; running the operation does not. The floo
 as Python 3.10 until that check was written.
 
 ```bash
-python3 run_tests.py        # 22 suites, 1127 checks — run this first
+python3 run_tests.py        # 22 suites, 1133 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
+python3 tests/interop_jcs.py  # canonical form vs ECMAScript; needs node, skips without
 ```
+
+The last one is separate because it needs a second language runtime. RFC 8785 delegates number
+and string formatting to ECMAScript, so a JavaScript engine is the authority the spec points at
+rather than a second opinion about it; without one on PATH the check says it was skipped and
+exits zero, having checked nothing and claimed nothing.
 
 ## The one thing this project needs from you
 
