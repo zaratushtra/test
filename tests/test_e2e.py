@@ -27,8 +27,8 @@ sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
 from spine import (ablation, chain, decision, evaluate, evidence,  # noqa: E402
-                   ledger, models, params, refclass, registry, scoring,
-                   shadow, sizing)
+                   ledger, lease, models, params, refclass, registry,
+                   scoring, shadow, sizing)
 from spine.ablation import Variant  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 from spine.registry import RegistryError  # noqa: E402
@@ -500,13 +500,25 @@ def main() -> int:
     used = sizing.cluster_exposure_used_usd(con, best[3])
     ok("nothing is committed against this cluster yet", used == 0.0)
     print(f"        {size.summary()}")
+
+    # §11.1: nothing acts until something attests. The decision reads the lease
+    # rather than assuming one, which is the whole point of an expiring grant.
+    ok_now, why_now = lease.permitted(con, iso(NOW))
+    ok("with nothing attesting, action is not permitted", not ok_now, why_now)
+    lease.grant(con, granted_by="e2e",
+                basis=f"book recorded {snap}; contract registry populated",
+                ttl_seconds=900, granted_at=iso(NOW))
+    ok_now, why_now = lease.permitted(con, iso(NOW + timedelta(minutes=1)))
+    ok("once the collector attests, it is", ok_now, why_now)
+    ok("...and it lapses on its own an hour later",
+       not lease.permitted(con, iso(NOW + timedelta(hours=1)))[0])
     d = decision.decide(
         p_est_bp=fc.p_est_bp, p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp, side="YES",
         book=book, intended_size_usd=min(500.0, size.max_notional_usd),
         costs_bp=100.0, eligibility_status="close_only",
         max_notional_usd=size.max_notional_usd,
         cluster_exposure_used_usd=used, cluster_exposure_cap_usd=cap,
-        mode=decision.PAPER)
+        mode=decision.PAPER, lease_ok=ok_now, lease_reason=why_now)
     ok("a paper decision is explicitly a simulation", d.is_simulation)
     ok("...and says so in a note that travels with it",
        any("SIMULATED" in n for n in d.notes), d.notes)
@@ -516,10 +528,23 @@ def main() -> int:
         costs_bp=100.0, eligibility_status="close_only",
         max_notional_usd=size.max_notional_usd,
         cluster_exposure_used_usd=used, cluster_exposure_cap_usd=cap,
-        mode=decision.LIVE)
+        mode=decision.LIVE, lease_ok=ok_now, lease_reason=why_now)
     ok("the same decision in live mode abstains on eligibility",
        not d_live.permitted and "close_only" in (d_live.abstain_reason or ""),
        d_live.abstain_reason)
+
+    # And with the lease lapsed it abstains one step earlier, on health.
+    stale_ok, stale_why = lease.permitted(con, iso(NOW + timedelta(hours=1)))
+    d_stale = decision.decide(
+        p_est_bp=fc.p_est_bp, p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp,
+        side="YES", book=book, intended_size_usd=min(500.0, size.max_notional_usd),
+        costs_bp=100.0, eligibility_status="tradeable",
+        max_notional_usd=size.max_notional_usd, cluster_exposure_used_usd=used,
+        cluster_exposure_cap_usd=cap, mode=decision.LIVE,
+        lease_ok=stale_ok, lease_reason=stale_why)
+    ok("a lapsed lease stops a live decision before eligibility is consulted",
+       not d_stale.permitted and "health lease" in (d_stale.abstain_reason or ""),
+       d_stale.abstain_reason)
 
     fid = con.execute("SELECT id FROM forecasts WHERE forecast_hash=?",
                       (best[3],)).fetchone()[0]

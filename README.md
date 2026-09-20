@@ -16,6 +16,7 @@ prediction markets.
 | — · Evidence pipeline | **built, fixtures only** | 68/68 `tests/test_evidence.py` — ingestion, deduplication, effective sources, claims, contradictions, influence budget. See `docs/EVIDENCE-REPORT.md` |
 | — · Shadow execution | **built, fixtures only** | 48/48 `tests/test_shadow.py` — recorded books, queue position, cancellation latency, adverse selection. See `docs/SHADOW-EXECUTION-REPORT.md` |
 | — · Reference classes | **built** | 35/35 `tests/test_refclass.py` — frozen rosters, content-addressed selection rules, hazard forecasts that reconstruct |
+| — · Controls (§5, §8, §11) | **built, fixtures only** | Leases, sizing, splits, conditional probability, the governance record. See `docs/CONTROLS-REPORT.md` |
 | — · Evaluation loop | **built, fixtures only** | 87/87 `tests/test_evaluate.py` — scores, exclusions, settlement divergence, the dependence DAG. See `docs/EVALUATION-REPORT.md` |
 | — · Signal collection | **built, fixtures only** | 42/42 `tests/test_collect.py` — predeclared anchored queries, RSS/Atom, hostile-input guards, provenance |
 | 4 · Container | **built** | 38/38 `tests/test_serve.py` — scheduled collector, clean SIGTERM, restart safety, no secret mechanism. `Dockerfile`, `serve.py` |
@@ -87,7 +88,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 19 suites, 967 checks
+python3 run_tests.py              # 19 suites, 971 checks
 python3 run_tests.py --docs       # and check what the documents claim
 ```
 
