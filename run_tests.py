@@ -32,6 +32,7 @@ SUITES = [
     ("venue access and the cycle", "tests/test_venue.py"),
     ("evaluation: scores, settlement, DAG", "tests/test_evaluate.py"),
     ("end-to-end integration", "tests/test_e2e.py"),
+    ("scale", "tests/test_scale.py"),
     ("scheduled collector", "tests/test_serve.py"),
 ]
 
