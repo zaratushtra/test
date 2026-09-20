@@ -33,7 +33,7 @@ PRAGMA busy_timeout = 5000;
 -- which is how a query silently returns nothing and the absence gets read as
 -- evidence. Bump this whenever this file changes in a way that is not purely
 -- additive; ledger.SCHEMA_VERSION must match.
-PRAGMA user_version = 10;
+PRAGMA user_version = 11;
 
 -- ============================================================================
 -- CANONICAL TIMESTAMPS
@@ -326,6 +326,12 @@ CREATE INDEX idx_effects_contract
 -- 5. INPUT COMMITMENT — content-addressed, not label-addressed
 -- ============================================================================
 
+-- Content is the CANONICAL form (RFC 8785), and manifest_hash is its SHA-256.
+-- Those two must agree: ledger.verify_manifests() checks it, and a mismatch
+-- means either tampering or a canonicalisation change. Version 11 is such a
+-- change -- numbers moved from Python repr to ES6 Number::toString, which is
+-- what RFC 8785 actually requires -- so manifests written under 10 or earlier
+-- re-hash differently and the version gate refuses those databases.
 CREATE TABLE manifests (
     manifest_hash      TEXT PRIMARY KEY,
     kind               TEXT NOT NULL CHECK (kind IN

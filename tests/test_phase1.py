@@ -278,7 +278,70 @@ def main() -> int:
     ok("recomputing the hash from stored fields reproduces it",
        chain.compute_hash(r, r["prev_hash"]) == fh)
 
-    print("\n[7b] Every forecast commits the parameters in force (§8.4)\n")
+    print("\n[7a] Numbers follow ES6 / RFC 8785, not Python repr\n")
+    from spine.canonical import _es6_number
+    # An earlier version used repr on the reasoning that it agrees with ES6 for
+    # every value this schema generates. repr(1.0) is '1.0' and ES6 gives '1',
+    # and every parameter snapshot contains 1.0, 900.0 and 0.25 -- so the
+    # deviation was not exotic, it was on every forecast.
+    for value, want in ((1.0, "1"), (-0.0, "0"), (0.1, "0.1"), (100.0, "100"),
+                        (1e21, "1e+21"), (1e20, "100000000000000000000"),
+                        (1e-6, "0.000001"), (1e-7, "1e-7"),
+                        (5e-324, "5e-324"), (1.5, "1.5"),
+                        (1.7976931348623157e308, "1.7976931348623157e+308")):
+        ok(f"{value!r} renders as {want!r}", _es6_number(value) == want,
+           _es6_number(value))
+    ok("an integral float carries no trailing .0",
+       canonicalise({"v": 1.0}) == '{"v":1}', canonicalise({"v": 1.0}))
+    ok("...which is what a third party reimplementing RFC 8785 would compute",
+       canonicalise({"v": 900.0}) == '{"v":900}')
+    ok("shortest round-trip digits are preserved",
+       canonicalise({"v": 0.1 + 0.2}) == '{"v":0.30000000000000004}')
+    # RFC 8785 sorts keys by UTF-16 code unit, not code point. These differ
+    # above the BMP: an astral character encodes as a surrogate pair beginning
+    # 0xD800, so it sorts BEFORE U+FFFD by code unit and after it by code
+    # point. Sorting by code point would give a digest no conforming
+    # implementation agrees with, for data nobody would think to look at.
+    ok("object keys sort by UTF-16 code unit, not code point",
+       canonicalise({"\ufffd": 1, "\U00010000": 2})
+       == '{"\U00010000":2,"\ufffd":1}',
+       canonicalise({"\ufffd": 1, "\U00010000": 2}))
+    ok("...which is the opposite of Python's own ordering",
+       sorted(["\ufffd", "\U00010000"]) == ["\ufffd", "\U00010000"])
+    ok("the short escapes are used where they exist, and / is not escaped",
+       canonicalise({"k": 'a"b\\c\nd\te\x01f/g'})
+       == '{"k":"a\\"b\\\\c\\nd\\te\\u0001f/g"}',
+       canonicalise({"k": 'a"b\\c\nd\te\x01f/g'}))
+    ok("non-ASCII is emitted literally, not escaped",
+       canonicalise({"k": "é日"}) == '{"k":"é日"}')
+    ok("the canonical form is still valid JSON that parses back",
+       __import__("json").loads(canonicalise({"a": 1.0, "b": ["x", None]}))
+       == {"a": 1, "b": ["x", None]})
+
+    print("\n[7b] A manifest must hash to its own key\n")
+    con = seeded()
+    mh = ledger.put_manifest(con, "model_config", {"a": 1.0, "b": [0.25, 900.0]}, T)
+    ok("a stored manifest verifies", ledger.verify_manifests(con) == [])
+    ok("...and its content is the canonical form byte for byte",
+       con.execute("SELECT content FROM manifests WHERE manifest_hash=?",
+                   (mh,)).fetchone()[0] == canonicalise({"a": 1.0,
+                                                         "b": [0.25, 900.0]}))
+    ok("manifests are immutable, so tampering needs file access",
+       raises(lambda: con.execute(
+           "UPDATE manifests SET content='{}' WHERE manifest_hash=?", (mh,)),
+           Exception))
+    con.execute("DROP TRIGGER manifests_immutable")
+    con.execute("UPDATE manifests SET content='{\"a\":2.0}' WHERE manifest_hash=?",
+                (mh,))
+    con.commit()
+    bad = ledger.verify_manifests(con)
+    ok("an edited manifest is caught", len(bad) == 1, bad)
+    ok("...and the reason names both causes worth distinguishing",
+       "tampering" in bad[0]["reason"] and "canonicalisation" in bad[0]["reason"])
+    ok("the forecast chain still verifies, which is why this check is separate",
+       chain.verify(con).ok)
+
+    print("\n[7c] Every forecast commits the parameters in force (§8.4)\n")
     con = seeded()
     bare = ledger.put_manifest(con, "forecast_inputs", {"claims": []}, T)
     ok("a manifest with no parameter snapshot is refused",

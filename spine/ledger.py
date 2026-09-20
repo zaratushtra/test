@@ -17,6 +17,7 @@ prose and never implemented:
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 
@@ -39,7 +40,8 @@ SCHEMA_PATH = os.path.join(
 #   8  untrusted-input flags on signal items (design section 11.3)
 #   9  expiring health leases (design section 11.1)
 #  10  indexes on the two foreign keys that queries filter by directly
-SCHEMA_VERSION = 10
+#  11  canonical numbers follow ES6/RFC 8785, not Python repr: hashes change
+SCHEMA_VERSION = 11
 
 
 class LedgerError(RuntimeError):
@@ -303,3 +305,42 @@ def reconstruct(con: sqlite3.Connection, forecast_hash: str) -> dict:
         if row["contract_id"] is not None else []
     )
     return row
+
+
+def verify_manifests(con: sqlite3.Connection) -> list[dict]:
+    """
+    Every manifest's stored content must hash to its key.
+
+    Nothing checked this. The chain covers forecasts, and a forecast commits to
+    its inputs *by manifest hash* — so a manifest whose content no longer hashes
+    to its key breaks the commitment silently: the chain still verifies, and the
+    thing it points at is not what was committed.
+
+    Two causes, and the returned reason distinguishes them. Tampering is the
+    obvious one. The other is a canonicalisation change, which is why schema
+    version 11 exists: numbers moved from Python's `repr` to the ES6 form RFC
+    8785 requires, so every manifest containing a float re-hashes differently.
+    """
+    from .canonical import canonicalise, content_hash
+
+    bad = []
+    for h, kind, content in con.execute(
+            "SELECT manifest_hash, kind, content FROM manifests ORDER BY manifest_hash"):
+        try:
+            payload = json.loads(content)
+        except (json.JSONDecodeError, TypeError) as e:
+            bad.append({"manifest_hash": h, "kind": kind,
+                        "reason": f"content is not JSON: {e}"})
+            continue
+        recomputed = content_hash(payload)
+        if recomputed != h:
+            bad.append({
+                "manifest_hash": h, "kind": kind, "recomputed": recomputed,
+                "reason": ("content does not hash to its key — tampering, or a "
+                           "canonicalisation change (see schema version 11)")})
+        elif canonicalise(payload) != content:
+            bad.append({
+                "manifest_hash": h, "kind": kind, "recomputed": recomputed,
+                "reason": ("content hashes correctly but is not stored in "
+                           "canonical form, so a byte comparison would differ")})
+    return bad

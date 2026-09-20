@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 1089 checks across 22 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 1114 checks across 22 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -572,6 +572,23 @@ the forecast hash. Every forecast references a **content-addressed manifest** en
 snapshot, evidence, model config, source-reliability version and market rules by hash. For
 LLM-assisted forecasts that includes the actual prompts, retrieved context, tool results and raw
 output — not version labels.
+
+**And the canonical form has to be the one everyone else computes.** `spine/canonical.py` claimed
+RFC 8785 and used Python's `repr` for numbers, on the reasoning that repr gives the shortest
+round-trip form and "agrees with ES6 for every value we generate". The first half is true. The
+second was not: `repr(1.0)` is `1.0`, ES6 gives `1`, and the parameter snapshot committed by *every*
+forecast contains `1.0`, `900.0` and `0.25`. The deviation was not exotic, it was universal.
+
+That is not a cosmetic difference here. §9.1 anchors the chain externally so pre-registration is a
+claim a third party need believe — and a third party reimplementing RFC 8785 would have computed
+different digests for the same data and concluded the record was forged.
+
+Numbers now follow ES6 `Number::toString`, keys sort by **UTF-16 code unit** rather than code point
+(they differ above the BMP, where an astral character's surrogate pair sorts before U+FFFD), and the
+serialiser is written directly rather than through `json.dumps`, whose encoder calls
+`float.__repr__` explicitly and offers no hook for number formatting. `ledger.verify_manifests()`
+checks that every stored manifest hashes to its own key — nothing did, so a manifest could diverge
+from its commitment while the forecast chain still verified.
 
 ### 9.3 A freeze timestamp proves almost nothing
 
