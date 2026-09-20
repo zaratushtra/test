@@ -33,7 +33,7 @@ PRAGMA busy_timeout = 5000;
 -- which is how a query silently returns nothing and the absence gets read as
 -- evidence. Bump this whenever this file changes in a way that is not purely
 -- additive; ledger.SCHEMA_VERSION must match.
-PRAGMA user_version = 8;
+PRAGMA user_version = 9;
 
 -- ============================================================================
 -- CANONICAL TIMESTAMPS
@@ -762,3 +762,45 @@ BEGIN
     WHERE NEW.look_index > (SELECT n_looks FROM evaluation_plans
                             WHERE id = NEW.plan_id);
 END;
+
+
+-- ============================================================================
+-- 12. HEALTH LEASES
+-- Section 11.1: "Order entry is gated by an expiring health lease, not a
+-- persistent 'healthy' flag: a dead monitor cannot clear a flag, but a lease
+-- fails safe on its own."
+--
+-- The distinction is the whole mechanism. A flag requires something alive to
+-- turn it off, and the failure that most needs turning it off is the thing
+-- dying. An expiry is stored at grant time and consulted at read time, so
+-- nothing has to act for permission to lapse.
+-- ============================================================================
+
+CREATE TABLE health_leases (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope              TEXT NOT NULL,     -- what it authorises; '*' for everything
+    granted_at         TEXT NOT NULL CHECK (granted_at GLOB
+                         '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    expires_at         TEXT NOT NULL CHECK (expires_at GLOB
+                         '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+    granted_by         TEXT NOT NULL,
+    -- What was checked before granting. A lease with no stated basis is a flag
+    -- with a timer on it.
+    basis              TEXT NOT NULL,
+    -- Set only by an explicit halt, which is separate from expiry: a halt is a
+    -- decision, an expiry is the absence of one.
+    revoked_at         TEXT,
+    revoked_by         TEXT,
+    revocation_reason  TEXT,
+    CHECK (expires_at > granted_at),
+    CHECK (revoked_at IS NULL OR (revoked_by IS NOT NULL
+                                  AND revocation_reason IS NOT NULL))
+) STRICT;
+
+CREATE INDEX idx_leases_expiry ON health_leases (scope, expires_at);
+
+CREATE TRIGGER health_leases_no_extend BEFORE UPDATE OF expires_at ON health_leases
+BEGIN SELECT RAISE(ABORT, 'a lease is not extended; grant a new one after checking again'); END;
+
+CREATE TRIGGER health_leases_no_delete BEFORE DELETE ON health_leases
+BEGIN SELECT RAISE(ABORT, 'leases are the audit trail of when action was permitted'); END;

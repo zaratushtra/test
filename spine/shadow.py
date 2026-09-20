@@ -168,19 +168,52 @@ def load_book(con: sqlite3.Connection, snapshot_id: int) -> Book:
                 _levels(json.loads(row[3])), row[4], row[5])
 
 
-def book_at(con: sqlite3.Connection, contract_id: int, as_of: str) -> Book | None:
-    """
-    The most recent book a decision at `as_of` could have used.
+# A book older than this is not a price, it is a memory. Fifteen minutes is one
+# ordinary collection cycle plus slack; past that the collector has missed a
+# pass and the number on screen stopped being the market some time ago.
+MAX_BOOK_AGE_SECONDS = 900.0
 
-    Keys on `available_for_decision_at`, same as every other retrieval in this
-    project. A backtest that reaches for the book captured *during* the decision
-    is the single easiest way to manufacture an edge that does not exist.
+
+def book_at(con: sqlite3.Connection, contract_id: int, as_of: str,
+            max_age_seconds: float | None = MAX_BOOK_AGE_SECONDS) -> Book | None:
+    """
+    The most recent book a decision at `as_of` could have used, if it is fresh.
+
+    Keys on `available_for_decision_at`, same as every other retrieval here. A
+    backtest that reaches for the book captured *during* the decision is the
+    single easiest way to manufacture an edge that does not exist.
+
+    **And it refuses a stale one.** This function used to return the newest book
+    however old it was, so a collector that died on Friday left Monday pricing
+    against Friday's market with no complaint anywhere — the §11.1 failure
+    exactly: nothing had to go wrong actively for the system to keep acting on
+    something that was no longer true. Pass `max_age_seconds=None` to retrieve a
+    stale book deliberately, which is a reasonable thing to want when studying
+    the record and never when pricing against it.
     """
     row = con.execute(
-        "SELECT id FROM book_snapshots WHERE contract_id=? AND "
+        "SELECT id, captured_at FROM book_snapshots WHERE contract_id=? AND "
         "available_for_decision_at <= ? ORDER BY available_for_decision_at DESC, "
         "id DESC LIMIT 1", (contract_id, as_of)).fetchone()
-    return load_book(con, row[0]) if row else None
+    if not row:
+        return None
+    if max_age_seconds is not None:
+        age = (_parse(as_of) - _parse(row[1])).total_seconds()
+        if age > max_age_seconds:
+            return None
+    return load_book(con, row[0])
+
+
+def book_age_seconds(con: sqlite3.Connection, contract_id: int,
+                     as_of: str) -> float | None:
+    """How stale the newest available book is. None when there is none."""
+    row = con.execute(
+        "SELECT captured_at FROM book_snapshots WHERE contract_id=? AND "
+        "available_for_decision_at <= ? ORDER BY available_for_decision_at DESC, "
+        "id DESC LIMIT 1", (contract_id, as_of)).fetchone()
+    if not row:
+        return None
+    return (_parse(as_of) - _parse(row[0])).total_seconds()
 
 
 # ---------------------------------------------------------------------------

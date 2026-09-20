@@ -154,6 +154,8 @@ def decide(
     min_edge_bp: float = 100.0,
     require_full_fill: bool = True,
     mode: str = PAPER,
+    lease_ok: bool = True,
+    lease_reason: str = "",
 ) -> Decision:
     """
     Form a trade decision. Abstains by default and explains every refusal.
@@ -165,6 +167,14 @@ def decide(
     jurisdictional eligibility gate while recording that it did. LIVE enforces
     eligibility — and there is deliberately no order-management service for it
     to feed, so a LIVE decision can be computed but not acted on.
+
+    `lease_ok` carries §11.1's health lease. It is a parameter rather than a
+    database read because this function must not decide whether the system is
+    healthy *and* act on the answer; the caller passes what
+    `spine/lease.permitted()` returned. A LIVE decision without a live lease
+    abstains; a PAPER one proceeds and records that it would not have been
+    permitted, because a paper run that silently ignored the gate would overstate
+    what a live run could have done.
     """
     if mode not in (PAPER, LIVE):
         raise DecisionError(f"mode must be {PAPER!r} or {LIVE!r}, got {mode!r}")
@@ -181,6 +191,15 @@ def decide(
             conservative_p_bp=kw.get("cons"),
             ev_per_share_bp=kw.get("ev"),
         )
+
+    # The lease comes before eligibility, because a system that cannot attest to
+    # its own health has no business evaluating whether a market is open to it.
+    if not lease_ok:
+        if mode == LIVE:
+            return abstain(f"no live health lease: {lease_reason}")
+        notes.append(
+            f"SIMULATED: no live health lease ({lease_reason}), so a live run "
+            "would have abstained here")
 
     # Eligibility first: no amount of edge makes an impermissible trade permissible.
     # In paper mode the counterfactual is the whole point, so the gate is noted

@@ -173,6 +173,24 @@ PARAMS: list[Param] = [
           "hundred bytes into gigabytes.",
           replaced_by="nothing; this is a safety limit, not an estimate"),
 
+    Param("maximum book age", 900.0, "spine/shadow.MAX_BOOK_AGE_SECONDS",
+          DECLARED,
+          "Past this a book is not a price, it is a memory. One ordinary "
+          "collection cycle plus slack. book_at() used to return the newest "
+          "book however old, so a collector that died on Friday left Monday "
+          "pricing against Friday's market — the §11.1 failure exactly.",
+          replaced_by="the measured distribution of price movement over elapsed "
+                      "time, per event family: the age at which a book stops "
+                      "predicting the current touch"),
+    Param("lease duration", 900.0, "spine/lease.DEFAULT_TTL_SECONDS", DECLARED,
+          "Long enough to survive an ordinary collection cycle, short enough "
+          "that a dead collector stops mattering within one. §11.1: a lease "
+          "fails safe on its own, where a flag needs something alive to clear "
+          "it — and the failure that most needs clearing it is that thing "
+          "dying.",
+          replaced_by="the observed time between successful collection passes, "
+                      "once there is a run long enough to have a distribution"),
+
     Param("exit band", 300, "spine/sizing.EXIT_BAND_BP", DECLARED,
           "How far from the touch depth still counts as exitable. Beyond this "
           "the book is not liquidity you can leave through in a hurry, it is "

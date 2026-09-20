@@ -37,7 +37,8 @@ SCHEMA_PATH = os.path.join(
 #   6  declared evaluation plans and recorded looks (alpha spending)
 #   7  reference classes store exposure_units, so hazard forecasts reconstruct
 #   8  untrusted-input flags on signal items (design section 11.3)
-SCHEMA_VERSION = 8
+#   9  expiring health leases (design section 11.1)
+SCHEMA_VERSION = 9
 
 
 class LedgerError(RuntimeError):

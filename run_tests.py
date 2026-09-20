@@ -24,6 +24,7 @@ SUITES = [
     ("evidence pipeline", "tests/test_evidence.py"),
     ("shadow execution", "tests/test_shadow.py"),
     ("position sizing", "tests/test_sizing.py"),
+    ("health leases", "tests/test_lease.py"),
     ("signal collection", "tests/test_collect.py"),
     ("untrusted input", "tests/test_untrusted.py"),
     ("venue access and the cycle", "tests/test_venue.py"),

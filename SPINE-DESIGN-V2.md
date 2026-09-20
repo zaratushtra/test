@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 823 checks across 16 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 872 checks across 17 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -621,6 +621,30 @@ Order entry is gated by an **expiring health lease**, not a persistent "healthy"
 monitor cannot clear a flag, but a lease fails safe on its own. Assess the venue's heartbeat
 auto-cancel as an additional safeguard, never as a substitute for reconciliation.
 
+Implemented in `spine/lease.py`. A lease states what was checked (`basis` is required — a lease with
+no stated basis is a flag with a timer on it), **cannot be extended** (the schema refuses
+`UPDATE ... SET expires_at`, because extending converts "this was true a moment ago" into "this is
+true until further notice"), and is never deleted, since the leases are the record of when action
+was permitted.
+
+**Halt and lapse are different events, and halt is not "revoke a lease".** Revoking one lease stops
+nothing while another covering the same instant is still live — which renewal guarantees, since
+leases overlap. A halt is a statement about *permission*, so `halt()` ends every lease authorising
+the scope. `permitted()` distinguishes the three states that can be acted on differently: never
+granted, lapsed, or halted by a named person for a stated reason.
+
+**The failure this was missing was already live.** `shadow.book_at()` returned the newest book
+however old it was, so a collector that died on Friday left Monday pricing against Friday's market
+with no complaint anywhere — nothing had to go wrong actively for the system to keep acting on
+something no longer true, which is precisely the shape this section exists to prevent. Books now
+expire, with the age reportable so a refusal is diagnosable, and `max_age_seconds=None` retrieves a
+stale one deliberately for study.
+
+`decide()` takes the lease result as an argument rather than reading it, so one component cannot
+both assess health and act on its own answer. A LIVE decision without a live lease abstains; a PAPER
+one proceeds and **records that a live run would not have** — a paper run that silently ignored the
+gate would overstate what a live run could have done.
+
 ### 11.2 Sizing
 
 Position limits derive from **monetary loss scenarios, concentration, liquidity and uncertainty** —
@@ -803,7 +827,7 @@ Every tunable number is registered in `spine/params.py` with its provenance, and
 | `external` | a fact about the world or a venue, dated | re-checking, because these expire |
 | `declared` | somebody chose it | nothing here supports it |
 
-**17 of 25 are `declared`.** That is the honest state of a project with no record yet, and stating it
+**19 of 27 are `declared`.** That is the honest state of a project with no record yet, and stating it
 as a proportion is more useful than defending each one individually. A `declared` entry must name
 what would replace it — the registry refuses to construct one otherwise, because a declared
 parameter with no replacement path is indistinguishable from a measurement nobody made.
