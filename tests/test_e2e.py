@@ -27,7 +27,8 @@ sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
 from spine import (ablation, chain, decision, evaluate, evidence,  # noqa: E402
-                   ledger, models, refclass, registry, scoring, shadow)
+                   ledger, models, refclass, registry, scoring, shadow,
+                   sizing)
 from spine.ablation import Variant  # noqa: E402
 from spine.models import ReferenceClass  # noqa: E402
 from spine.registry import RegistryError  # noqa: E402
@@ -479,20 +480,37 @@ def main() -> int:
     ok("a decision before the book was usable would have had none",
        shadow.book_at(con, cid, iso(NOW - timedelta(seconds=1))) is None)
     book = live.asks
+
+    # Limits are DERIVED (§11.2), not invented at the call site. Every earlier
+    # version of this test passed made-up numbers, which checked that arbitrary
+    # limits are enforced rather than that correct ones are computed.
+    size = sizing.position_limit(loss_budget_usd=1000.0, book=live, side="YES",
+                                 p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp)
+    ok("the position limit is derived from the book and the interval",
+       size.max_notional_usd > 0, size.summary())
+    ok("...and names what bound it", size.binding in
+       ("loss budget", "liquidity", "loss budget then uncertainty",
+        "liquidity then uncertainty"), size.binding)
+    cap = sizing.concentration_cap_usd(1000.0, n_linked=0)
+    used = sizing.cluster_exposure_used_usd(con, best[3])
+    ok("nothing is committed against this cluster yet", used == 0.0)
+    print(f"        {size.summary()}")
     d = decision.decide(
         p_est_bp=fc.p_est_bp, p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp, side="YES",
-        book=book, intended_size_usd=500.0, costs_bp=100.0,
-        eligibility_status="close_only", max_notional_usd=1000.0,
-        cluster_exposure_used_usd=0.0, cluster_exposure_cap_usd=2000.0,
+        book=book, intended_size_usd=min(500.0, size.max_notional_usd),
+        costs_bp=100.0, eligibility_status="close_only",
+        max_notional_usd=size.max_notional_usd,
+        cluster_exposure_used_usd=used, cluster_exposure_cap_usd=cap,
         mode=decision.PAPER)
     ok("a paper decision is explicitly a simulation", d.is_simulation)
     ok("...and says so in a note that travels with it",
        any("SIMULATED" in n for n in d.notes), d.notes)
     d_live = decision.decide(
         p_est_bp=fc.p_est_bp, p_lo_bp=fc.p_lo_bp, p_hi_bp=fc.p_hi_bp, side="YES",
-        book=book, intended_size_usd=500.0, costs_bp=100.0,
-        eligibility_status="close_only", max_notional_usd=1000.0,
-        cluster_exposure_used_usd=0.0, cluster_exposure_cap_usd=2000.0,
+        book=book, intended_size_usd=min(500.0, size.max_notional_usd),
+        costs_bp=100.0, eligibility_status="close_only",
+        max_notional_usd=size.max_notional_usd,
+        cluster_exposure_used_usd=used, cluster_exposure_cap_usd=cap,
         mode=decision.LIVE)
     ok("the same decision in live mode abstains on eligibility",
        not d_live.permitted and "close_only" in (d_live.abstain_reason or ""),
@@ -534,16 +552,22 @@ def main() -> int:
     print("\n[8b] Shadow execution against the same book\n")
     o_agg = shadow.record_order(
         con, contract_id=cid, book_snapshot_id=snap, side="YES",
-        style="aggressive", limit_price_bp=3300, intended_size_usd=500.0,
+        style="aggressive", limit_price_bp=3300,
+        # The size the DECISION reached, not one chosen here: a shadow fill that
+        # replays a different size than the decision took is not shadowing it.
+        intended_size_usd=d.intended_size_usd,
         placed_at=iso(NOW), decision_id=con.execute(
             "SELECT id FROM trade_decisions ORDER BY id LIMIT 1").fetchone()[0])
-    f_agg = shadow.aggressive_fill(live, "YES", 500.0, 3300)
+    f_agg = shadow.aggressive_fill(live, "YES", d.intended_size_usd, 3300)
     shadow.record_fill(con, o_agg, f_agg, recorded_at=iso(NOW))
     ok("an aggressive fill pays through the inside price",
        f_agg.avg_price_bp > live.best_ask_bp, f_agg.summary())
-    ok("...and the decision's own estimate matched the same walk",
+    ok("...and the decision's own estimate matched the same walk, to the cent",
        abs(f_agg.avg_price_bp - d.expected_acquisition_bp) < 1e-6,
        (f_agg.avg_price_bp, d.expected_acquisition_bp))
+    ok("...which only holds because the shadow replays the decision's size",
+       abs(f_agg.filled_usd - d.intended_size_usd) < 1e-9,
+       (f_agg.filled_usd, d.intended_size_usd))
 
     o_pass = shadow.record_order(
         con, contract_id=cid, book_snapshot_id=snap, side="YES", style="passive",

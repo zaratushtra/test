@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 777 checks across 15 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 823 checks across 16 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -632,6 +632,28 @@ bet economically as well as evidentially — but driven by **loss covariance**, 
 quantity from forecast-score correlation. The schema types dependence explicitly as `score`, `loss`
 or `evidence`; a single generic correlation field cannot serve all three.
 
+Implemented in `spine/sizing.py`, which until now was a paragraph: `decide()` took
+`max_notional_usd` and `cluster_exposure_cap_usd` as arguments and every caller passed a number
+somebody made up, so the tests checked that arbitrary limits are *enforced* rather than that correct
+ones are *computed*.
+
+Four inputs, and what each is doing:
+
+- **Loss budget.** A binary contract's worst case is total, so the first bound is simply the loss
+  you will take on one position — not a fraction of capital scaled by confidence, because
+  confidence is what the estimate is for and letting it also set size counts one belief twice.
+- **Liquidity**, measured on the side you would **exit** through. A YES position is closed by
+  selling into the bids, so sizing against the entry side is a standard way to build a position that
+  is comfortable to open and impossible to close.
+- **Uncertainty**, as a *reduction only*. A wide interval shrinks the position; a narrow one never
+  inflates it past the loss budget. §5.1's separation is the reason — uncertainty belongs to
+  permission, never to the estimate.
+- **Concentration**, from the `loss` dependence graph and never the `score` one.
+
+The binding constraint is reported alongside the number, because "bound by liquidity" and "bound by
+loss budget" call for different responses and a bare figure hides which you are in. `n_eff` appears
+nowhere in the module, and a test asserts it.
+
 ### 11.3 Untrusted input
 
 Retrieved news and documents are untrusted throughout. They must never be able to instruct the
@@ -781,7 +803,7 @@ Every tunable number is registered in `spine/params.py` with its provenance, and
 | `external` | a fact about the world or a venue, dated | re-checking, because these expire |
 | `declared` | somebody chose it | nothing here supports it |
 
-**15 of 23 are `declared`.** That is the honest state of a project with no record yet, and stating it
+**17 of 25 are `declared`.** That is the honest state of a project with no record yet, and stating it
 as a proportion is more useful than defending each one individually. A `declared` entry must name
 what would replace it — the registry refuses to construct one otherwise, because a declared
 parameter with no replacement path is indistinguishable from a measurement nobody made.

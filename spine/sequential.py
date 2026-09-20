@@ -145,10 +145,17 @@ def critical_lower_bound(look: Look, std_error: float) -> float:
 
 
 def gate_fires(point: float, std_error: float, look: Look) -> bool:
-    """Whether the sequential gate passes at this look."""
+    """
+    Whether the sequential gate passes at this look.
+
+    Delegates to `critical_lower_bound` rather than recomputing `z * se`. The
+    two used to be separate expressions of one rule, which is a rule that can
+    come to disagree with itself — and the reporting path would then quote a
+    threshold the gate had not actually applied.
+    """
     if math.isinf(look.z_threshold):
         return False
-    return point - look.z_threshold * std_error > 0.0
+    return point > critical_lower_bound(look, std_error)
 
 
 def describe(looks: list[Look]) -> str:

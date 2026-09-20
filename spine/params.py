@@ -173,6 +173,18 @@ PARAMS: list[Param] = [
           "hundred bytes into gigabytes.",
           replaced_by="nothing; this is a safety limit, not an estimate"),
 
+    Param("exit band", 300, "spine/sizing.EXIT_BAND_BP", DECLARED,
+          "How far from the touch depth still counts as exitable. Beyond this "
+          "the book is not liquidity you can leave through in a hurry, it is "
+          "liquidity you would move.",
+          replaced_by="measured price impact of exits at various sizes, from "
+                      "recorded books and shadow fills"),
+    Param("depth share", 0.25, "spine/sizing.DEPTH_SHARE", DECLARED,
+          "The share of exitable depth one position may take. Taking all of it "
+          "means being the entire other side on the way out.",
+          replaced_by="the same impact measurements; this is the level at which "
+                      "exit cost stops being linear"),
+
     Param("safe url schemes", "http, https", "spine/untrusted.SAFE_URL_SCHEMES",
           DECLARED,
           "The only schemes that denote a document you could go and read. "

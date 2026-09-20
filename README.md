@@ -46,6 +46,7 @@ spine/registry.py         screened markets -> contracts; rules-version identity
 spine/evidence.py         signals -> claims -> contract effects; the influence budget
 spine/shadow.py           recorded books, queue fills, markouts, adverse selection
 spine/params.py           every tunable number, with how it was arrived at
+spine/sizing.py           position limits from loss, liquidity, uncertainty (§11.2)
 spine/untrusted.py        text and links from the open internet (§11.3)
 spine/refclass.py         freeze a reference class from its roster; load it back
 spine/timeutil.py         one canonical timestamp; point-in-time comparison depends on it
@@ -61,6 +62,7 @@ tests/test_phase2b.py     Phase 2 validation — models, ablations
 tests/test_evidence.py    evidence pipeline validation
 tests/test_shadow.py      shadow execution validation
 tests/test_params.py      the registry as a gate: no unregistered constants
+tests/test_sizing.py      sizing, concentration, and not n_eff
 tests/test_untrusted.py   bidi overrides, hostile links, SQL parameterisation
 tests/test_refclass.py    freezing, immutability, hazard reconstruction
 tests/test_timeutil.py    timestamp canonicalisation and the ordering bug
@@ -79,7 +81,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 15 suites, 777 checks
+python3 run_tests.py              # 16 suites, 823 checks
 python3 run_tests.py --docs       # and check what the documents claim
 ```
 
@@ -146,7 +148,7 @@ field. See `docs/EVALUATION-REPORT.md` §1.
 **Two thirds of the tunable numbers are declared, not measured.** `spine/params.py`
 registers every one with its provenance — `measured` (and which simulation
 produced it), `derived` (and from which identity), `external` (with a date,
-because those expire), or `declared`. **15 of 23 are `declared`**: somebody chose
+because those expire), or `declared`. **17 of 25 are `declared`**: somebody chose
 them and nothing in this repository supports them. That is an honest state for a
 project with no record yet, and it is worth being able to read in one go rather
 than inferring from a dozen scattered constants that all look equally like facts.

@@ -23,6 +23,7 @@ SUITES = [
     ("phase 2 — models and ablations", "tests/test_phase2b.py"),
     ("evidence pipeline", "tests/test_evidence.py"),
     ("shadow execution", "tests/test_shadow.py"),
+    ("position sizing", "tests/test_sizing.py"),
     ("signal collection", "tests/test_collect.py"),
     ("untrusted input", "tests/test_untrusted.py"),
     ("venue access and the cycle", "tests/test_venue.py"),

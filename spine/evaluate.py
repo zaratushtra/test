@@ -522,6 +522,7 @@ class Evaluation:
     look_index: int | None = None
     n_looks: int | None = None
     z_threshold: float | None = None
+    critical_lower_bound: float | None = None
     recorded: bool = False
 
     def summary(self) -> str:
@@ -539,9 +540,10 @@ class Evaluation:
         else:
             lines.append(
                 f"gate: {'FIRES' if self.gate_fires else 'does not fire'} at look "
-                f"{self.look_index}/{self.n_looks} "
-                f"(z={self.z_threshold:.2f}, point {self.ci_point:+.4f}, "
-                f"95% CI [{self.ci_lower:+.4f}, {self.ci_upper:+.4f}])"
+                f"{self.look_index}/{self.n_looks} — point {self.ci_point:+.4f} "
+                f"vs {self.critical_lower_bound:+.4f} required "
+                f"(z={self.z_threshold:.2f}; 95% CI "
+                f"[{self.ci_lower:+.4f}, {self.ci_upper:+.4f}])"
                 + ("" if self.recorded else "  [DRY RUN — not recorded]"))
         return "\n".join(lines)
 
@@ -626,6 +628,10 @@ def evaluate(
                                plan["spending"])[index - 1]
     std_error = (ci.upper - ci.lower) / (2 * Z_95)
     fires = sequential.gate_fires(ci.point, std_error, look)
+    # Reported because "did not fire" is far more useful with the distance:
+    # +0.19 against +0.28 required says how far off the record is, where a bare
+    # refusal says only that it is not there yet.
+    required = sequential.critical_lower_bound(look, std_error)
 
     if record_look:
         con.execute(
@@ -642,7 +648,8 @@ def evaluate(
     return Evaluation(**base, ci_point=ci.point, ci_lower=ci.lower,
                       ci_upper=ci.upper, gate_fires=fires,
                       look_index=index, n_looks=plan["n_looks"],
-                      z_threshold=look.z_threshold, recorded=record_look)
+                      z_threshold=look.z_threshold,
+                      critical_lower_bound=required, recorded=record_look)
 
 
 def calibration(con: sqlite3.Connection, bins: int = 10, **filters) -> list[dict]:
