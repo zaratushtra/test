@@ -30,6 +30,14 @@ can check it**. §9.1 anchors the chain externally so pre-registration is a clai
 a third party need believe; a third party reimplementing RFC 8785 would have
 computed different digests for the same data and concluded the record was
 forged.
+
+**Depth is bounded.** `_check` and `_serialise` are both recursive, and a
+payload nested a few hundred deep — or one containing a reference to itself —
+exhausted the interpreter stack and raised `RecursionError` straight out of
+`content_hash`. That is the same shape of failure as the narrow `except` in
+`venue.snapshot_books`: an exception nobody named escaping the module that was
+supposed to have decided what it means. A payload that deep is a bug or an
+attack, never a forecast, so it is refused by name.
 """
 
 from __future__ import annotations
@@ -41,13 +49,31 @@ from typing import Any
 
 GENESIS_HASH = "0" * 64
 
+# Deepest nesting a payload may have. The deepest thing this project actually
+# commits is a manifest holding a parameter snapshot, at four levels; sixty-four
+# leaves three orders of magnitude of headroom and still refuses long before
+# CPython's own recursion limit (1000 by default, and each level here costs two
+# frames). A self-referential structure has no depth at all, so it trips this
+# too — which is the intended answer, since it has no canonical form either.
+MAX_DEPTH = 64
+
 
 class CanonicalisationError(ValueError):
     """The payload cannot be canonically serialised."""
 
 
-def _check(value: Any, path: str = "$") -> None:
+def _check(value: Any, path: str = "$", depth: int = 0) -> None:
     """Reject anything whose canonical form would be ambiguous."""
+    if depth > MAX_DEPTH:
+        # The path is elided in the middle: at this depth it is sixty-odd
+        # repetitions of the same key, and the two ends are the only part that
+        # tells a reader where to look.
+        shown = path if len(path) <= 64 else f"{path[:30]}...{path[-30:]}"
+        raise CanonicalisationError(
+            f"{shown}: nested deeper than {MAX_DEPTH} levels, or contains a "
+            "reference to itself. Either way it has no canonical form; "
+            "serialising it would exhaust the stack rather than refuse"
+        )
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
             raise CanonicalisationError(
@@ -59,10 +85,10 @@ def _check(value: Any, path: str = "$") -> None:
                 raise CanonicalisationError(
                     f"{path}: object keys must be strings, got {type(k).__name__}"
                 )
-            _check(v, f"{path}.{k}")
+            _check(v, f"{path}.{k}", depth + 1)
     elif isinstance(value, (list, tuple)):
         for i, v in enumerate(value):
-            _check(v, f"{path}[{i}]")
+            _check(v, f"{path}[{i}]", depth + 1)
     elif not isinstance(value, (str, int, bool, type(None))):
         raise CanonicalisationError(
             f"{path}: {type(value).__name__} has no canonical JSON form"
@@ -184,7 +210,13 @@ def _serialise(value: Any) -> str:
 
 
 def canonicalise(payload: Any) -> str:
-    """Return the canonical JSON text for a payload."""
+    """Return the canonical JSON text for a payload.
+
+    `_check` runs first and refuses anything past `MAX_DEPTH`, so `_serialise`
+    — recursive and unguarded — is only ever reached on a payload already known
+    to be shallow enough. The guard lives in one of the two rather than both
+    because two depth limits are two things that can drift apart.
+    """
     _check(payload)
     return _serialise(payload)
 

@@ -181,6 +181,41 @@ def main() -> int:
     refuses("a malformed prev_hash is refused",
             lambda: canonical.chain_hash({"a": 1}, "short"),
             canonical.CanonicalisationError, "64 hex")
+
+    def _nest(d):
+        v = "leaf"
+        for _ in range(d):
+            v = {"a": v}
+        return v
+
+    ok("a payload at the depth limit still canonicalises",
+       isinstance(canonical.content_hash(_nest(canonical.MAX_DEPTH)), str))
+    refuses("a payload nested past the depth limit is refused by name",
+            lambda: canonical.content_hash(_nest(canonical.MAX_DEPTH + 1)),
+            canonical.CanonicalisationError, "nested deeper")
+    # The interesting case: deep enough that the recursive serialiser used to
+    # raise RecursionError, which escaped the module entirely. CanonicalisationError
+    # does not inherit from RecursionError, so catching it proves the guard fired
+    # rather than the interpreter.
+    refuses("a payload deep enough to exhaust the stack is refused, not crashed",
+            lambda: canonical.content_hash(_nest(5000)),
+            canonical.CanonicalisationError, "nested deeper")
+
+    _cycle = {}
+    _cycle["self"] = _cycle
+    refuses("a payload containing itself is refused",
+            lambda: canonical.content_hash(_cycle),
+            canonical.CanonicalisationError, "reference to itself")
+
+    _deep_list = []
+    _cur = _deep_list
+    for _ in range(400):
+        _nxt = []
+        _cur.append(_nxt)
+        _cur = _nxt
+    refuses("deep nesting through lists is refused too",
+            lambda: canonical.content_hash(_deep_list),
+            canonical.CanonicalisationError, "nested deeper")
     refuses("anchoring an empty chain is refused",
             lambda: chain.anchor(ledger.connect(":memory:", create=True),
                                  "rfc3161", "r", "p", T),

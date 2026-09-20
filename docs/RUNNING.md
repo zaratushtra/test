@@ -15,7 +15,7 @@ somebody's recollection of a changelog; running the operation does not. The floo
 as Python 3.10 until that check was written.
 
 ```bash
-python3 run_tests.py        # 22 suites, 1121 checks — run this first
+python3 run_tests.py        # 22 suites, 1127 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 

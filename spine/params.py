@@ -184,6 +184,12 @@ PARAMS: list[Param] = [
           "with the DOCTYPE/ENTITY refusal, since entity expansion turns a few "
           "hundred bytes into gigabytes.",
           replaced_by="nothing; this is a safety limit, not an estimate"),
+    Param("maximum payload depth", 64, "spine/canonical.MAX_DEPTH", DECLARED,
+          "How deeply a payload may nest before canonicalisation refuses it. "
+          "The deepest structure this project actually commits is four levels; "
+          "past this the recursive serialiser raised RecursionError rather than "
+          "a named refusal, and a self-referential payload never terminated.",
+          replaced_by="nothing; this is a safety limit, not an estimate"),
 
     Param("coordination rho", 0.70, "spine/conditional.RHO_CENTRE", DECLARED,
           "v1's constant in p <- p*rho^(N-1). §5.5: \"a made-up functional form "

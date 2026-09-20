@@ -5,7 +5,8 @@
     "AblationError(f'key {k!r} sits in different regimes in the two variants')"
   ],
   "canonical.py": [
-    "CanonicalisationError(f'prev_hash must be 64 hex chars, got {prev_hash!r}')"
+    "CanonicalisationError(f'prev_hash must be 64 hex chars, got {prev_hash!r}')",
+    "CanonicalisationError(f'{shown}: nested deeper than {MAX_DEPTH} levels, or contains a reference to itself. Either way it has no canonical form; serialising it would exhaust the stack rather than refuse')"
   ],
   "chain.py": [
     "ChainError('nothing to anchor: chain is empty')"

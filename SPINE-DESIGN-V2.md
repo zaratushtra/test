@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 1121 checks across 22 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 1127 checks across 22 suites (`python3 run_tests.py`), plus 32 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -589,6 +589,12 @@ serialiser is written directly rather than through `json.dumps`, whose encoder c
 `float.__repr__` explicitly and offers no hook for number formatting. `ledger.verify_manifests()`
 checks that every stored manifest hashes to its own key — nothing did, so a manifest could diverge
 from its commitment while the forecast chain still verified.
+
+Nesting is bounded at 64 levels. Both the validator and the serialiser are recursive, so a payload
+nested a few hundred deep — or one holding a reference to itself — exhausted the interpreter stack
+and raised `RecursionError` out of `content_hash()`, an exception the integrity core had never
+decided the meaning of. The deepest structure this project commits is four levels; past the limit
+it is a bug or an attack, and it is refused by name.
 
 ### 9.3 A freeze timestamp proves almost nothing
 
