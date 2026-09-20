@@ -3,7 +3,7 @@
 **Date:** 20 Sep 2026
 **Status:** **Built and validated on fixtures.** Every numbered subsection of the design now has code
 behind it or is prose that cannot have any.
-**Validation:** `python3 run_tests.py --docs` — 20 suites, 992 checks, plus 32 documentation checks.
+**Validation:** `python3 run_tests.py --docs` — 20 suites, 997 checks, plus 32 documentation checks.
 
 These seven sections had one thing in common: each stated a discipline clearly and none of them had
 been implemented. Building them turned up four live bugs, which is the argument for building them

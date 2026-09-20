@@ -33,7 +33,7 @@ PRAGMA busy_timeout = 5000;
 -- which is how a query silently returns nothing and the absence gets read as
 -- evidence. Bump this whenever this file changes in a way that is not purely
 -- additive; ledger.SCHEMA_VERSION must match.
-PRAGMA user_version = 9;
+PRAGMA user_version = 10;
 
 -- ============================================================================
 -- CANONICAL TIMESTAMPS
@@ -312,6 +312,16 @@ CREATE TABLE claim_contract_effects (
 CREATE TRIGGER effects_append_only BEFORE UPDATE ON claim_contract_effects
 BEGIN SELECT RAISE(ABORT, 'effects are append-only; emit a new model_version'); END;
 
+-- Matches the WHERE clause in effects_available_at() and usable_contributions(),
+-- which both filter by contract and then by availability time. This is the
+-- fastest-growing table in the schema -- one row per claim, contract, horizon,
+-- estimator, model version and vintage -- and without the index each lookup
+-- scans it, so the cost per lookup grows with the record. Measured: 100
+-- lookups over 200k effects, 1.57s unindexed against 0.040s, and the gap
+-- widens with size.
+CREATE INDEX idx_effects_contract
+    ON claim_contract_effects (contract_id, available_for_decision_at);
+
 -- ============================================================================
 -- 5. INPUT COMMITMENT — content-addressed, not label-addressed
 -- ============================================================================
@@ -482,6 +492,11 @@ CREATE TABLE trade_decisions (
 -- ============================================================================
 -- 8. OUTCOMES — research outcome and economic settlement kept separate
 -- ============================================================================
+
+-- sizing.cluster_exposure_used_usd() joins from trade_decisions to forecasts,
+-- which scans every decision ever made on each call. Measured: 20 queries over
+-- 150k decisions, 1.12s unindexed against 0.006s.
+CREATE INDEX idx_decisions_forecast ON trade_decisions (forecast_id);
 
 -- Resolutions are REVISED, never replaced. A disputed outcome that is later
 -- adjudicated is a new revision with a reason and a named adjudicator; the

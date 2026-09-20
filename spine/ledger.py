@@ -38,7 +38,8 @@ SCHEMA_PATH = os.path.join(
 #   7  reference classes store exposure_units, so hazard forecasts reconstruct
 #   8  untrusted-input flags on signal items (design section 11.3)
 #   9  expiring health leases (design section 11.1)
-SCHEMA_VERSION = 9
+#  10  indexes on the two foreign keys that queries filter by directly
+SCHEMA_VERSION = 10
 
 
 class LedgerError(RuntimeError):

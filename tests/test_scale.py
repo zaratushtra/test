@@ -204,6 +204,59 @@ def main() -> int:
     _, dt_cx = timed(lambda: sizing.cluster_exposure_used_usd(db, fhash))
     budget("cluster_exposure over the loss graph", dt_cx, 5.0)
 
+    print("\n[4] The two indexes that measurement justified\n")
+    # 26 foreign keys have no leading index. Only two are ever FILTERED by
+    # directly, which is what costs: SQLite plans a join from the child outward
+    # using the parent's primary key, so an unindexed FK is free there and
+    # expensive in a WHERE clause. Adding all 26 on principle would be paying
+    # write cost for 24 reads nobody makes.
+    idx = {r[0] for r in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='index'")}
+    ok("claim_contract_effects is indexed by the column it is filtered by",
+       "idx_effects_contract" in idx, sorted(idx))
+    ok("...and trade_decisions likewise", "idx_decisions_forecast" in idx)
+
+    eff_db = ledger.connect(":memory:", create=True)
+    registry.ingest_markets(eff_db, rows[:20], jurisdiction="GB", now=iso(NOW))
+    eff_db.execute("INSERT INTO event_clusters VALUES('c',1,?,?,?)",
+                   (iso(NOW), iso(NOW), iso(NOW)))
+    eff_db.executemany(
+        """INSERT INTO claims(claim_hash,cluster_id,cluster_version,assertion,
+           authenticity,extraction_fidelity,establishes,n_eff_sources,
+           available_for_decision_at,computed_at,feature_version)
+           VALUES(?,'c',1,'a','artifact_verified','checked_faithful',
+                  'underlying_fact',1.0,?,?,'v1')""",
+        [(f"cl{i}", iso(NOW), iso(NOW)) for i in range(100)])
+    N_E = 40000
+    eff_db.executemany(
+        """INSERT INTO claim_contract_effects(claim_id,contract_id,horizon_days,
+           llr,conditioned_on_ref,estimator,model_version,final_contribution,
+           contribution_cap,available_for_decision_at,computed_at)
+           VALUES(?,?,14.0,0.5,'m','fitted_model',?,0.4,1.5,?,?)""",
+        [((i % 100) + 1, (i % 20) + 1, f"v{i}", iso(NOW), iso(NOW))
+         for i in range(N_E)])
+    eff_db.commit()
+    as_of = iso(NOW + timedelta(days=1))
+    # Timed separately, because most of the wall time here is Python building
+    # dicts and not the query: 2000 rows come back per lookup, so 200 lookups
+    # construct 400k of them. Reporting the combined figure would credit the
+    # index for a cost it does not pay and hide the one it does.
+    _, dt_sql = timed(lambda: [
+        eff_db.execute("SELECT id FROM claim_contract_effects WHERE "
+                       "contract_id=? AND available_for_decision_at <= ?",
+                       ((c % 20) + 1, as_of)).fetchall() for c in range(200)])
+    budget(f"200 indexed lookups over {N_E} effects", dt_sql, 5.0,
+           "  [1.57s unindexed at 200k]")
+    _, dt_eff = timed(lambda: [
+        ledger.effects_available_at(eff_db, (c % 20) + 1, as_of)
+        for c in range(200)])
+    budget("...the same through effects_available_at", dt_eff, 15.0)
+    per_lookup = len(ledger.effects_available_at(eff_db, 1, as_of))
+    ok("the difference is row materialisation, not the query",
+       dt_eff > dt_sql * 2, (dt_sql, dt_eff))
+    print(f"        {N_E} effects, 200 lookups: query {dt_sql:.3f}s, "
+          f"with materialisation {dt_eff:.3f}s ({per_lookup} rows each)")
+
     print("\n" + "=" * 76)
     print(f"{len(PASS)}/{len(PASS) + len(FAIL)} checks passed")
     if FAIL:
