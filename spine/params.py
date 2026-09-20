@@ -174,6 +174,22 @@ PARAMS: list[Param] = [
           "hundred bytes into gigabytes.",
           replaced_by="nothing; this is a safety limit, not an estimate"),
 
+    Param("embargo", 7 * 86400.0, "spine/splits.DEFAULT_EMBARGO_SECONDS",
+          DECLARED,
+          "How long after a cutoff before a new example counts as independent "
+          "of the training labels. Dropping the overlapping examples is not "
+          "enough: one created just after the cutoff was made under conditions "
+          "the training labels describe, so its dates look clean and it is not "
+          "independent (§8.3).",
+          replaced_by="the measured autocorrelation of forecast errors against "
+                      "elapsed time, per event family"),
+    Param("minimum retention", 0.20, "spine/splits.MIN_RETENTION", DECLARED,
+          "Below this share surviving the purge, the fit describes a sample "
+          "selected by how fast its questions resolved rather than the question "
+          "set, so the split raises instead of reporting on what is left.",
+          replaced_by="nothing directly; it is a guard. The right cutoff is a "
+                      "study design decision the guard exists to force"),
+
     Param("maximum book age", 900.0, "spine/shadow.MAX_BOOK_AGE_SECONDS",
           DECLARED,
           "Past this a book is not a price, it is a memory. One ordinary "

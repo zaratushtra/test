@@ -9,7 +9,7 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
-python3 run_tests.py        # 17 suites, 880 checks — run this first
+python3 run_tests.py        # 18 suites, 914 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 

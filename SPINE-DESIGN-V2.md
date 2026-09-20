@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 880 checks across 17 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 914 checks across 18 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -472,6 +472,25 @@ example created before a cutoff may resolve after it. Require `label_available_a
 cutoff and purge overlapping examples. Fit normalisers, feature selection, source scores and
 calibration inside the same temporal discipline.
 
+Implemented in `spine/splits.py`, which names three groups rather than two. **train** is created
+before the cutoff *and* labelled by it. **purged** is created before and labelled after — not
+training data, since the label did not exist; not test data either, since the model has seen the
+question. **test** is created after the cutoff and after an embargo.
+
+The embargo is there because purging the overlaps is not sufficient: an example created just after
+the cutoff was made under the conditions the training labels describe — the same week's news, the
+same regime — so its dates look clean while it is not independent.
+
+**The purge rate is reported, and a split that keeps too little raises.** On long-horizon questions
+the purge can be most of the sample, and what survives is then a set selected by how fast its
+questions resolved rather than by the question set. `min_retention=0.0` allows it deliberately,
+which is the right setting when the horizon cost is itself what is being measured.
+
+`rolling_splits()` computes each walk-forward fold independently, because a normaliser or source
+score carried forward from an earlier fold is fitted on data the later fold treats as unseen — this
+section's "inside the same temporal discipline" applies to every fitted quantity, not only to the
+model.
+
 ### 8.4 There are more than two free parameters
 
 v1 named λ and λ_sig. Also tunable: reference-class selection, feature weights, ρ, clustering
@@ -839,7 +858,7 @@ Every tunable number is registered in `spine/params.py` with its provenance, and
 | `external` | a fact about the world or a venue, dated | re-checking, because these expire |
 | `declared` | somebody chose it | nothing here supports it |
 
-**19 of 27 are `declared`.** That is the honest state of a project with no record yet, and stating it
+**21 of 29 are `declared`.** That is the honest state of a project with no record yet, and stating it
 as a proportion is more useful than defending each one individually. A `declared` entry must name
 what would replace it — the registry refuses to construct one otherwise, because a declared
 parameter with no replacement path is indistinguishable from a measurement nobody made.

@@ -21,6 +21,7 @@ SUITES = [
     ("reference classes", "tests/test_refclass.py"),
     ("phase 2 — scoring, decision, sequential", "tests/test_phase2.py"),
     ("phase 2 — models and ablations", "tests/test_phase2b.py"),
+    ("temporal splits", "tests/test_splits.py"),
     ("evidence pipeline", "tests/test_evidence.py"),
     ("shadow execution", "tests/test_shadow.py"),
     ("position sizing", "tests/test_sizing.py"),
