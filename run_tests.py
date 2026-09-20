@@ -34,6 +34,7 @@ SUITES = [
     ("evaluation: scores, settlement, DAG", "tests/test_evaluate.py"),
     ("end-to-end integration", "tests/test_e2e.py"),
     ("scale", "tests/test_scale.py"),
+    ("concurrency", "tests/test_concurrent.py"),
     ("scheduled collector", "tests/test_serve.py"),
 ]
 

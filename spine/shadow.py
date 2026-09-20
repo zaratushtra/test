@@ -142,20 +142,23 @@ def record_book(
     payload = {"bids": [[l.price_bp, l.size_usd] for l in b],
                "asks": [[l.price_bp, l.size_usd] for l in a]}
     h = content_hash(payload)
-    row = con.execute(
-        "SELECT id FROM book_snapshots WHERE contract_id=? AND snapshot_hash=? "
-        "AND captured_at=?", (contract_id, h, _iso(cap))).fetchone()
-    if row:
-        return row[0]
-    cur = con.execute(
+    # INSERT-then-read, not read-then-INSERT. The obvious idempotence pattern
+    # is check-then-act and races: two collectors against one database both see
+    # no row and both insert, and one gets an IntegrityError from a function
+    # whose whole promise is that a repeat is a no-op. ON CONFLICT DO NOTHING
+    # makes the write atomic, so the read afterwards always finds a row.
+    con.execute(
         """INSERT INTO book_snapshots
            (contract_id, snapshot_hash, venue_timestamp, captured_at,
             available_for_decision_at, bids, asks, source)
-           VALUES (?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?)
+           ON CONFLICT DO NOTHING""",
         (contract_id, h, venue_timestamp, _iso(cap), _iso(avail),
          json.dumps(payload["bids"]), json.dumps(payload["asks"]), source))
     con.commit()
-    return cur.lastrowid
+    return con.execute(
+        "SELECT id FROM book_snapshots WHERE contract_id=? AND snapshot_hash=? "
+        "AND captured_at=?", (contract_id, h, _iso(cap))).fetchone()[0]
 
 
 def load_book(con: sqlite3.Connection, snapshot_id: int) -> Book:

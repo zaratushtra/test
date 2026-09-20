@@ -151,15 +151,15 @@ def put_manifest(con: sqlite3.Connection, kind: str, content: dict, created_at: 
     from .canonical import canonicalise
 
     h = content_hash(content)
-    exists = con.execute(
-        "SELECT 1 FROM manifests WHERE manifest_hash = ?", (h,)
-    ).fetchone()
-    if not exists:
-        con.execute(
-            "INSERT INTO manifests(manifest_hash, kind, content, created_at) VALUES(?,?,?,?)",
-            (h, kind, canonicalise(content), created_at),
-        )
-        con.commit()
+    # ON CONFLICT rather than check-then-act: two processes storing the same
+    # manifest at once would otherwise race, and one would get an
+    # IntegrityError from a function documented as idempotent.
+    con.execute(
+        "INSERT INTO manifests(manifest_hash, kind, content, created_at) "
+        "VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
+        (h, kind, canonicalise(content), created_at),
+    )
+    con.commit()
     return h
 
 

@@ -1,1 +1,83 @@
-{"ablation.py": [88, 117, 119], "canonical.py": [90], "chain.py": [148], "collect.py": [195, 197], "conditional.py": [210], "decision.py": [85, 297], "evidence.py": [259, 732, 750, 752, 804], "ledger.py": [192, 195, 285], "models.py": [137, 239, 302], "refclass.py": [106, 136, 180], "registry.py": [248], "scoring.py": [110, 114, 140, 204], "sequential.py": [51, 93, 143], "shadow.py": [166, 392, 399, 402], "sizing.py": [227, 229], "splits.py": [175], "venue.py": [65, 67, 72, 135, 225]}
+{
+  "ablation.py": [
+    "AblationError('both variants need observations')",
+    "AblationError(f'key {k!r} has different outcomes in the two variants')",
+    "AblationError(f'key {k!r} sits in different regimes in the two variants')"
+  ],
+  "canonical.py": [
+    "CanonicalisationError(f'prev_hash must be 64 hex chars, got {prev_hash!r}')"
+  ],
+  "chain.py": [
+    "ChainError('nothing to anchor: chain is empty')"
+  ],
+  "collect.py": [
+    "CollectError(f'HTTP {e.code} from {url}: {e.reason}')",
+    "FeedUnreachable(f'cannot reach {url}: {e.reason}')"
+  ],
+  "conditional.py": [
+    "ConditionalError('rho_range is inverted')"
+  ],
+  "decision.py": [
+    "DecisionError('a refusal must carry a reason')",
+    "DecisionError('target size must be positive')"
+  ],
+  "evidence.py": [
+    "EvidenceError('n_eff must be positive')",
+    "EvidenceError(f'no claim {claim_id}')",
+    "EvidenceError(f'no signal item {item_id}')",
+    "EvidenceError(f'unknown authenticity value {authenticity!r}')",
+    "EvidenceError(f'unknown extraction_fidelity value {extraction_fidelity!r}')"
+  ],
+  "ledger.py": [
+    "LedgerError(f\"missing required field(s): {', '.join(missing)}\")",
+    "LedgerError(f\"unknown field(s): {', '.join(sorted(unknown))}\")",
+    "LedgerError(f'no forecast {forecast_hash[:12]}...')"
+  ],
+  "models.py": [
+    "ModelError('hazard rate cannot be negative')",
+    "ModelError('residual sd cannot be negative')",
+    "ModelError('singular normal equations; not enough variation to fit')"
+  ],
+  "refclass.py": [
+    "RefClassError('a Beta prior needs alpha > 0 and beta > 0')",
+    "RefClassError(f'member(s) {bad[:3]} have a non-binary outcome')",
+    "RefClassError(f'no reference class version {class_version_id}')"
+  ],
+  "registry.py": [
+    "RegistryError(f'no contract {contract_id}')"
+  ],
+  "scoring.py": [
+    "ScoringError('benchmark Brier is zero; skill is undefined')",
+    "ScoringError('no scorable observations')",
+    "ScoringError('no scorable observations')",
+    "ScoringError('no scorable observations')",
+    "ScoringError('no scorable observations')"
+  ],
+  "sequential.py": [
+    "SequentialError('standard error cannot be negative')",
+    "SequentialError(f'information fraction must be in (0, 1], got {t}')",
+    "SequentialError(f'information fraction must be in (0, 1], got {t}')",
+    "SequentialError(f'quantile out of range: {p}')"
+  ],
+  "shadow.py": [
+    "ShadowError(\"markout reference is a different contract's book\")",
+    "ShadowError('a one-sided book has no midpoint to mark against')",
+    "ShadowError(f'no book snapshot {snapshot_id}')",
+    "ShadowError(f'no fill {fill_id}')"
+  ],
+  "sizing.py": [
+    "SizingError('a group cannot have negative membership')",
+    "SizingError('the loss budget must be positive')"
+  ],
+  "splits.py": [
+    "SplitError(f'train example {ex.key!r} was created after the cutoff')"
+  ],
+  "venue.py": [
+    "Unreachable(f'cannot reach {url}: {e.reason}. This host has no route to the venue; run from a machine with outbound network, or pass saved JSON with --from-dir')",
+    "VenueError('a book request needs an outcome token id')",
+    "VenueError('contract has no outcome token id')",
+    "VenueError(f'HTTP {e.code} from {url}: {e.reason}')",
+    "VenueError(f'expected a list of markets, got {type(batch).__name__}')",
+    "VenueError(f'{url} returned something that is not JSON')"
+  ]
+}

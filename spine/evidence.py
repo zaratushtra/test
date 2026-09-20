@@ -125,16 +125,13 @@ def ensure_source(
     now: str | None = None,
 ) -> int:
     """Register a source, returning its id. Idempotent on name."""
-    row = con.execute("SELECT id FROM sources WHERE name = ?", (name,)).fetchone()
-    if row:
-        return row[0]
-    cur = con.execute(
+    con.execute(
         "INSERT INTO sources(name, kind, owner_group, homepage, created_at) "
-        "VALUES(?,?,?,?,?)",
+        "VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING",
         (name, kind, owner_group, homepage, now or _now()),
     )
     con.commit()
-    return cur.lastrowid
+    return con.execute("SELECT id FROM sources WHERE name = ?", (name,)).fetchone()[0]
 
 
 # ---------------------------------------------------------------------------
@@ -215,17 +212,30 @@ def ingest_item(
         "SELECT id FROM signal_items WHERE content_hash=? AND source_id<>?",
         (h, source_id)).fetchall()]
 
+    # ON CONFLICT DO NOTHING, then read back. The SELECT above is a fast path,
+    # not a guarantee: two collectors ingesting the same article at the same
+    # moment both find it absent, and without this one of them gets an
+    # IntegrityError from a function whose contract is that a repeat is a no-op.
     cur = con.execute(
         """INSERT INTO signal_items
            (content_hash, source_id, url, event_at, claimed_published_at,
             first_seen_at, artifact_created_at, available_for_decision_at,
             title, body_ref, item_class, display_warnings, rejected_url_reason)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT DO NOTHING""",
         (h, source_id, safe_url, event_at, claimed_published_at, _iso(seen),
          _canon(now) if now else _now(), _iso(avail), title, body_ref,
          item_class, warnings, url_reason))
-    item_id = cur.lastrowid
+    inserted = bool(cur.rowcount)
     con.commit()
+    if not inserted:
+        # Lost the race. Whoever won stored the same content by definition, so
+        # the outcome is the one this call promised.
+        row = con.execute(
+            "SELECT id FROM signal_items WHERE content_hash=? AND source_id=?",
+            (h, source_id)).fetchone()
+        return Ingested(row[0], h, note="already ingested from this source")
+    item_id = cur.lastrowid
 
     note_parts = []
     if warnings:
@@ -627,21 +637,19 @@ def record_claim(
         "cluster_id": cluster_id, "cluster_version": cluster_version,
         "assertion": assertion, "feature_version": feature_version,
     })
-    existing = con.execute("SELECT id FROM claims WHERE claim_hash=?", (h,)).fetchone()
-    if existing:
-        return existing[0], eff
-    cur = con.execute(
+    con.execute(
         """INSERT INTO claims
            (claim_hash, cluster_id, cluster_version, assertion, authenticity,
             extraction_fidelity, establishes, primary_artifact_id, n_eff_sources,
             available_for_decision_at, computed_at, feature_version)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING""",
         (h, cluster_id, cluster_version, assertion, authenticity,
          extraction_fidelity, establishes, primary_artifact_id, eff.n_eff,
          _canon(available_for_decision_at), _canon(now) if now else _now(),
          feature_version))
     con.commit()
-    return cur.lastrowid, eff
+    return con.execute("SELECT id FROM claims WHERE claim_hash=?",
+                       (h,)).fetchone()[0], eff
 
 
 def record_contradiction(

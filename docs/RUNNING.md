@@ -9,7 +9,7 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
-python3 run_tests.py        # 21 suites, 1048 checks — run this first
+python3 run_tests.py        # 22 suites, 1068 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 
@@ -166,6 +166,18 @@ and audit writes continue.
 Stale data is refused on the same principle rather than warned about. A book older than fifteen
 minutes is not returned by `shadow.book_at()` at all, because a collector that died on Friday should
 not leave Monday pricing against Friday's market.
+
+## Running the collector while you work
+
+The database is WAL-mode with a five-second busy timeout, so `serve.py` can collect while you
+analyse the same file. The idempotent creators — sources, manifests, contracts, propositions,
+snapshots, items — are safe to call from both at once: they insert with `ON CONFLICT DO NOTHING`
+and read back, rather than checking first and then inserting, which races.
+
+The one thing two processes **cannot** do at once is extend the forecast hash chain. The chain-head
+trigger compares `prev_hash` against the current head, so a concurrent second append is refused.
+That is the right outcome — a forked chain would be far worse than a failed write — but it means
+forecast registration should happen in one process.
 
 ## Schema versions
 

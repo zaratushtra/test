@@ -118,28 +118,27 @@ def ingest_markets(
         token = str(m.get("outcome_token_id") or m.get("clob_token_id") or f"{mid}:YES")
         rvh = rules_version_hash(rules)
 
-        exists = con.execute(
-            "SELECT 1 FROM contracts WHERE venue=? AND market_id=? AND "
-            "outcome_token_id=? AND rules_version_hash=?",
-            (venue, mid, token, rvh),
-        ).fetchone()
-        if exists:
-            present += 1
-            continue
-
-        con.execute(
+        # ON CONFLICT rather than check-then-act: two collectors registering
+        # the same market at once would otherwise both see it absent and both
+        # insert, and one would get an IntegrityError out of an ingestion that
+        # is supposed to be safe to repeat. rowcount tells us which happened.
+        cur = con.execute(
             """INSERT INTO contracts
                (venue, market_id, outcome_token_id, rules_text, rules_version_hash,
                 deadline_utc, resolution_source, payout_states, fee_schedule_ref,
                 eligibility_status, eligibility_checked_at, first_seen_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT DO NOTHING""",
             (venue, mid, token, rules, rvh, str(deadline),
              str(m.get("resolution_source") or "venue_rules_text"),
              json.dumps(BINARY_PAYOUTS, sort_keys=True),
              m.get("fee_schedule_ref"),
              elig, ts, ts),
         )
-        inserted += 1
+        if cur.rowcount:
+            inserted += 1
+        else:
+            present += 1
 
     con.commit()
     return IngestReport(len(markets), inserted, present, skipped)
@@ -169,21 +168,18 @@ def ensure_proposition(
         "resolution_criterion": resolution_criterion,
         "deadline_utc": deadline_utc,
     })
-    row = con.execute(
-        "SELECT id FROM propositions WHERE proposition_hash=?", (phash,)
-    ).fetchone()
-    if row:
-        return row[0]
-    cur = con.execute(
+    con.execute(
         """INSERT INTO propositions
            (proposition_hash, statement, resolution_criterion, deadline_utc,
             event_family, horizon_class, created_at)
-           VALUES (?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING""",
         (phash, statement, resolution_criterion, deadline_utc,
          event_family, horizon_class, ts),
     )
     con.commit()
-    return cur.lastrowid
+    return con.execute(
+        "SELECT id FROM propositions WHERE proposition_hash=?", (phash,)
+    ).fetchone()[0]
 
 
 def bind(

@@ -11,9 +11,9 @@ This is separate from `run_tests.py` because tracing every suite takes minutes,
 and a slow check that runs on every commit gets skipped. Run it when guards are
 added or removed.
 
-    python3 tests/trace_refusals.py            # report
-    python3 tests/trace_refusals.py --update   # rewrite refusal_targets.json
-    python3 tests/trace_refusals.py --verify   # fail if targets are unreached
+    python3 tests/trace_refusals.py            # coverage across all suites
+    python3 tests/trace_refusals.py --update   # record what test_refusals covers
+    python3 tests/trace_refusals.py --verify   # fail on a gap, or a lost target
 
 Stdlib only; no coverage library.
 """
@@ -56,23 +56,32 @@ except SystemExit:
 '''
 
 
-def raise_sites() -> dict[str, set[int]]:
-    sites: dict[str, set[int]] = {}
+def raise_sites() -> dict[str, dict[int, str]]:
+    """Every raise site, as {module: {line: source text}}."""
+    sites: dict[str, dict[int, str]] = {}
     for p in sorted((ROOT / "spine").glob("*.py")):
         for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Raise) and node.exc is not None:
-                sites.setdefault(p.name, set()).add(node.lineno)
+                try:
+                    text = ast.unparse(node.exc)
+                except Exception:  # noqa: BLE001
+                    text = "<unparseable>"
+                sites.setdefault(p.name, {})[node.lineno] = " ".join(text.split())
     return sites
 
 
-def trace_all(scratch: pathlib.Path) -> tuple[dict[str, set[int]], list[str]]:
+def trace_all(scratch: pathlib.Path,
+              only: str | None = None) -> tuple[dict[str, set[int]], list[str]]:
     scratch.mkdir(parents=True, exist_ok=True)
     tracer = scratch / "_tracer.py"
     tracer.write_text(_TRACER % (str(ROOT / "spine") + os.sep,))
 
-    suites = [f"tests/{f}" for f in sorted(os.listdir(ROOT / "tests"))
-              if f.startswith("test_") and f not in ("test_docs.py",)]
-    suites.append("db/test_schema_v2.py")
+    if only:
+        suites = [only]
+    else:
+        suites = [f"tests/{f}" for f in sorted(os.listdir(ROOT / "tests"))
+                  if f.startswith("test_") and f not in ("test_docs.py",)]
+        suites.append("db/test_schema_v2.py")
 
     merged: dict[str, set[int]] = {}
     incomplete = []
@@ -104,7 +113,12 @@ def main() -> int:
     covered, incomplete = trace_all(scratch)
 
     total = sum(len(v) for v in sites.values())
-    missing = {m: sorted(v - covered.get(m, set())) for m, v in sites.items()}
+    # Keyed by the raise TEXT, not the line. Line numbers go stale on the next
+    # edit above them, and a stale target list fails for a reason that has
+    # nothing to do with coverage -- which this check discovered about itself.
+    missing = {m: sorted(text for ln, text in v.items()
+                         if ln not in covered.get(m, set()))
+               for m, v in sites.items()}
     missing = {m: v for m, v in missing.items() if v}
     n_missing = sum(len(v) for v in missing.values())
 
@@ -119,26 +133,44 @@ def main() -> int:
     print(f"\n{total} raise sites in spine/, {n_missing} never reached "
           f"({100 * (total - n_missing) // total}% covered)\n")
     for mod in sorted(missing):
-        src = (ROOT / "spine" / mod).read_text(encoding="utf-8").splitlines()
         print(f"  {mod}:")
-        for ln in missing[mod]:
-            print(f"    {ln:>4}: {src[ln - 1].strip()[:84]}")
+        for text in missing[mod]:
+            print(f"    {text[:88]}")
+
+    # What test_refusals.py alone covers. That is the meaningful record: it says
+    # which guards THAT suite is responsible for, so deleting one of its checks
+    # is caught even while another suite happens to reach the same line.
+    own, own_incomplete = trace_all(scratch, only="tests/test_refusals.py")
+    owned = {m: sorted(text for ln, text in v.items()
+                       if ln in own.get(m, set()))
+             for m, v in sites.items()}
+    owned = {m: v for m, v in owned.items() if v}
+    n_owned = sum(len(v) for v in owned.values())
+    print(f"\ntests/test_refusals.py alone reaches {n_owned} of them")
 
     if update:
-        TARGETS.write_text(json.dumps(missing, indent=2, sort_keys=True) + "\n")
-        print(f"\nwrote {TARGETS.relative_to(ROOT)}")
+        TARGETS.write_text(json.dumps(owned, indent=2, sort_keys=True) + "\n")
+        print(f"wrote {TARGETS.relative_to(ROOT)} ({n_owned} guards)")
+
+    rc = 0
     if verify:
+        if n_missing:
+            print(f"\nFAIL: {n_missing} guard(s) unreached by any suite")
+            rc = 1
         targets = json.loads(TARGETS.read_text()) if TARGETS.exists() else {}
-        unreached = {m: sorted(set(v) & set(missing.get(m, [])))
-                     for m, v in targets.items()}
-        unreached = {m: v for m, v in unreached.items() if v}
-        if unreached:
-            print("\nFAIL: targets still unreached by any suite:")
-            for m, v in unreached.items():
-                print(f"  {m}: {v}")
-            return 1
-        print("\nOK: every target in refusal_targets.json is reached")
-    return 0
+        lost = {m: sorted(set(v) - set(owned.get(m, [])))
+                for m, v in targets.items()}
+        lost = {m: v for m, v in lost.items() if v}
+        if lost:
+            print("\nFAIL: test_refusals.py no longer reaches guards it owns:")
+            for m, v in lost.items():
+                for t in v:
+                    print(f"  {m}: {t[:80]}")
+            rc = 1
+        if rc == 0:
+            print("\nOK: every guard is reached, and test_refusals.py still "
+                  "covers all it owns")
+    return rc
 
 
 if __name__ == "__main__":

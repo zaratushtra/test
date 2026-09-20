@@ -323,27 +323,29 @@ def main() -> int:
     print("\n[6] The claim that these are covered, checked\n")
     targets = json.load(open(TARGETS_FILE, encoding="utf-8"))
     n_targets = sum(len(v) for v in targets.values())
-    ok(f"a target list of {n_targets} previously-untested guards exists",
+    ok(f"a target list of {n_targets} guards this suite owns exists",
        n_targets > 30, n_targets)
 
+    # Keyed by the raise TEXT, not the line number. The first version used line
+    # numbers and went stale the moment anything above a guard was edited,
+    # failing for a reason that had nothing to do with coverage.
     sites = {}
     for p in sorted(pathlib.Path(ROOT, "spine").glob("*.py")):
         for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Raise) and node.exc is not None:
-                sites.setdefault(p.name, set()).add(node.lineno)
+                try:
+                    txt = " ".join(ast.unparse(node.exc).split())
+                except Exception:  # noqa: BLE001
+                    txt = "<unparseable>"
+                sites.setdefault(p.name, set()).add(txt)
     stale = {m: sorted(set(v) - sites.get(m, set())) for m, v in targets.items()}
     stale = {m: v for m, v in stale.items() if v}
-    ok("every target is still a raise site", not stale, stale)
-    ok("the target list covers the modules it names",
+    ok("every guard this suite owns still exists in the code", not stale,
+       {m: v[:2] for m, v in stale.items()})
+    ok("the target list names only modules that exist",
        set(targets) <= set(sites), set(targets) - set(sites))
-    covered = json.loads(os.environ.get("SPINE_REFUSAL_COVERAGE", "{}"))
-    if covered:
-        missed = {m: sorted(set(v) - set(covered.get(m, [])))
-                  for m, v in targets.items()}
-        missed = {m: v for m, v in missed.items() if v}
-        ok("this suite reaches every target it claims", not missed, missed)
-    else:
-        print("        (run tests/trace_refusals.py to verify reachability)")
+    print(f"        {n_targets} guards owned across {len(targets)} modules; "
+          "run tests/trace_refusals.py --verify to confirm reachability")
 
     print("\n" + "=" * 76)
     print(f"{len(PASS)}/{len(PASS) + len(FAIL)} checks passed")
