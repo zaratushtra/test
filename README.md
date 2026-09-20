@@ -87,7 +87,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 19 suites, 955 checks
+python3 run_tests.py              # 19 suites, 967 checks
 python3 run_tests.py --docs       # and check what the documents claim
 ```
 

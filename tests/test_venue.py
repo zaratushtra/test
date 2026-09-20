@@ -146,6 +146,20 @@ def main() -> int:
     ok("a crossed book is refused at the storage layer", "crossed" in whys["m3"])
     ok("one bad token does not abort the run", res["recorded"] + len(res["skipped"]) == 4)
 
+    # A fetcher can raise anything at all -- a replay source missing a key, a
+    # socket error from deep in urllib, a decoder failing on a truncated body.
+    # The narrow except used to let those through and abort the whole run, which
+    # an offline replay with a missing token found by raising KeyError.
+    def hostile(token):
+        raise KeyError(token)
+
+    wild = venue.snapshot_books(con, contracts, source="fixture",
+                                fetcher=hostile)
+    ok("a fetcher raising something unexpected does not abort the run",
+       wild["recorded"] == 0 and len(wild["skipped"]) == 4, wild)
+    ok("...and the exception type is recorded, not swallowed",
+       all("KeyError" in why for _, why in wild["skipped"]), wild["skipped"])
+
     b = shadow.load_book(con, res["snapshot_ids"][0])
     ok("the recorded book round-trips through storage",
        b.best_bid_bp == 6100 and b.best_ask_bp == 6300 and b.spread_bp == 200)

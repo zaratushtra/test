@@ -184,6 +184,60 @@ def main() -> int:
         ok("the heartbeat is valid JSON every time it is read",
            isinstance(json.load(open(hb, encoding="utf-8")), dict))
 
+        print("\n[5c] The cycle attests only to what it verified (§11.1)\n")
+        import sqlite3 as _sq3
+        lease_db = os.path.join(d, "lease.db")
+        cycle_l = ["--from-dir", saved, "--db", lease_db, "--jurisdiction", "GB"]
+        r_l = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "run_cycle.py"),
+             "--lease-seconds", "900", *cycle_l],
+            capture_output=True, text=True, cwd=ROOT)
+        ok("a clean pass grants a lease", "granted by run_cycle" in r_l.stdout,
+           r_l.stdout[-400:])
+        ok("...and the basis states what was actually seen",
+           "books recorded" in r_l.stdout)
+        ok("...so action is permitted", "action PERMITTED" in r_l.stdout)
+
+        # A pass where every book failed must not attest to anything.
+        empty = os.path.join(d, "empty-books")
+        os.makedirs(empty, exist_ok=True)
+        with open(os.path.join(saved, "markets.json"), encoding="utf-8") as fh:
+            mk = fh.read()
+        with open(os.path.join(empty, "markets.json"), "w", encoding="utf-8") as fh:
+            fh.write(mk)
+        with open(os.path.join(empty, "books.json"), "w", encoding="utf-8") as fh:
+            fh.write("{}")
+        bad_db = os.path.join(d, "bad-lease.db")
+        r_b = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "run_cycle.py"),
+             "--lease-seconds", "900", "--from-dir", empty, "--db", bad_db,
+             "--jurisdiction", "GB"], capture_output=True, text=True, cwd=ROOT)
+        ok("a pass whose books all failed completes rather than crashing",
+           r_b.returncode == 0, r_b.stderr[-400:])
+        ok("...and grants no lease", "NOT GRANTING" in r_b.stdout,
+           r_b.stdout[-400:])
+        ok("...so nothing is permitted", "NOT PERMITTED" in r_b.stdout)
+        # The message wraps, so compare on normalised whitespace rather than
+        # on a substring that a line break can split.
+        ok("...because a lease granted on a failed pass is the flag it replaces",
+           "is the flag it replaces" in " ".join(r_b.stdout.split()),
+           r_b.stdout[-300:])
+
+        r_h = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "run_cycle.py"), "--db",
+             lease_db, "--halt", "venue dispute"],
+            capture_output=True, text=True, cwd=ROOT)
+        ok("a halt revokes every live lease", "lease(s) revoked" in r_h.stdout,
+           r_h.stdout[-300:])
+        r_a = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "run_cycle.py"), *cycle_l],
+            capture_output=True, text=True, cwd=ROOT)
+        ok("...and afterwards nothing is permitted",
+           "NOT PERMITTED" in r_a.stdout and "halted by" in r_a.stdout,
+           r_a.stdout[-300:])
+        ok("...while collection itself continued, which is what halt means",
+           "recorded 3 book" in r_a.stdout, r_a.stdout[-500:])
+
         print("\n[6b] The heartbeat never kills the loop\n")
         nested = os.path.join(d, "does", "not", "exist", "health.json")
         p8 = serve("--interval", "0.05", "--max-passes", "1", "--quiet",

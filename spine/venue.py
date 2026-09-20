@@ -232,8 +232,16 @@ def snapshot_books(
             recorded.append(sid)
             if on_result:
                 on_result(c, sid, None)
-        except (VenueError, shadow.ShadowError) as e:
-            skipped.append((c.get("market_id") or c.get("id"), str(e)))
+        except Exception as e:  # noqa: BLE001
+            # Deliberately broad. The promise in the docstring is that one bad
+            # contract does not abort a collection run, and a fetcher can raise
+            # anything at all — a replay source missing a key, a socket error
+            # from deep in urllib, a decoder failing on a truncated body. This
+            # was caught the honest way: an offline replay with a missing token
+            # raised KeyError straight through the run, which is exactly the
+            # class of failure the narrow except was supposed to contain.
+            skipped.append((c.get("market_id") or c.get("id"),
+                            f"{type(e).__name__}: {e}"))
             if on_result:
                 on_result(c, None, str(e))
     return {"recorded": len(recorded), "skipped": skipped,

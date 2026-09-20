@@ -27,7 +27,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "phase0"))
 
 import screen_markets  # noqa: E402
-from spine import collect, evaluate, ledger, registry, shadow, venue  # noqa: E402
+from spine import (collect, evaluate, ledger, lease,  # noqa: E402
+                   registry, shadow, venue)
 
 
 def now() -> datetime:
@@ -56,7 +57,28 @@ def main() -> int:
                     help="also run every declared collection query")
     ap.add_argument("--record-look", action="store_true",
                     help="spend one of the budgeted evaluation looks (irreversible)")
+    ap.add_argument("--lease-seconds", type=float, default=0.0,
+                    help="grant a health lease for this long if the cycle "
+                         "attests cleanly; 0 grants none")
+    ap.add_argument("--halt", metavar="REASON",
+                    help="revoke every live lease and exit")
     args = ap.parse_args()
+
+    # ---------------------------------------------------------- halt
+    if args.halt:
+        banner("HALT")
+        try:
+            con = ledger.connect(args.db)
+        except ledger.LedgerError as e:
+            print(f"\n  {e}", file=sys.stderr)
+            return 3
+        n = lease.halt(con, halted_by=os.environ.get("USER", "operator"),
+                       reason=args.halt)
+        print(f"  {n} lease(s) revoked. No new exposure.\n"
+              "  Monitoring and audit writes continue; this stops permission,\n"
+              "  not collection (design §11.1).")
+        con.close()
+        return 0
 
     # ---------------------------------------------------------- reachability
     if not args.from_dir:
@@ -158,8 +180,15 @@ def main() -> int:
                  for r in cur.fetchall()]
     if args.from_dir:
         books = venue.load_saved(os.path.join(args.from_dir, "books.json"))
+
+        def replay(token):
+            if token not in books:
+                raise venue.VenueError(
+                    f"no saved book for token {token!r} in this replay set")
+            return books[token]
+
         result = venue.snapshot_books(con, contracts, source="replay",
-                                      fetcher=lambda t: books[t])
+                                      fetcher=replay)
     else:
         result = venue.snapshot_books(con, contracts)
         if args.save_dir:
@@ -208,6 +237,37 @@ def main() -> int:
                   f"{len(failed)} quer{'y' if len(failed)==1 else 'ies'} failed")
             for r in failed[:6]:
                 print(f"    {r.summary()}")
+
+    # ---------------------------------------------------------- health lease
+    banner("HEALTH LEASE")
+    # §11.1. The basis has to be TRUE: a lease is an attestation, and one
+    # granted on a cycle that mostly failed is a flag with a timer on it. So the
+    # cycle states what it actually saw, and declines to attest when it did not
+    # see enough.
+    if args.lease_seconds > 0:
+        recorded = result["recorded"] if not args.no_books else 0
+        skipped_n = len(result["skipped"]) if not args.no_books else 0
+        attempted = recorded + skipped_n
+        clean = attempted > 0 and recorded >= attempted * 0.8
+        if args.no_books:
+            print("  Not granting: --no-books means nothing about market data\n"
+                  "  was verified this pass, and a lease attests to what was.")
+        elif not clean:
+            print(f"  NOT GRANTING: {recorded} of {attempted} books recorded.\n"
+                  "  A lease granted on a pass that mostly failed is the flag it\n"
+                  "  replaces. Whatever lease is live will lapse on its own.")
+        else:
+            granted = lease.grant(
+                con, granted_by="run_cycle",
+                basis=(f"cycle completed: {total} contracts registered, "
+                       f"{recorded} of {attempted} books recorded, "
+                       f"{skipped_n} skipped"),
+                ttl_seconds=args.lease_seconds)
+            print(f"  {granted.summary()}")
+            print(f"  basis: {granted.basis}")
+
+    live, why = lease.permitted(con)
+    print(f"  action {'PERMITTED' if live else 'NOT PERMITTED'}: {why}")
 
     # ---------------------------------------------------------- evaluation
     banner("EVALUATION")

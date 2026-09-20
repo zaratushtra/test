@@ -9,7 +9,7 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
-python3 run_tests.py        # 19 suites, 955 checks — run this first
+python3 run_tests.py        # 19 suites, 967 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 
@@ -52,6 +52,8 @@ Useful flags:
 | `--from-dir DIR` | replay saved JSON instead of fetching |
 | `--sweep` | also run every declared collection query |
 | `--record-look` | spend one of the budgeted evaluation looks (irreversible) |
+| `--lease-seconds N` | grant a health lease for N seconds if the pass attests cleanly |
+| `--halt REASON` | revoke every live lease and exit |
 
 ## What a healthy run looks like
 
@@ -129,6 +131,41 @@ The thresholds relax across the schedule — 6.09, 4.23, 3.40, 2.95, 2.68, 2.52,
 
 Three things block the gate by name rather than caveating it: no declared plan, fewer than twelve
 regimes, and stale scores left by an unprocessed resolution revision.
+
+## Health leases and halting
+
+Nothing is permitted to act until something attests that the system is fit to. That attestation is a
+**lease**, and it expires by itself — §11.1's point is that a dead monitor cannot clear a flag,
+while a lease needs nobody to end it.
+
+```bash
+python3 run_cycle.py --jurisdiction GB --db spine.db --lease-seconds 900
+```
+
+The cycle grants one **only if it attests cleanly** — at least 80% of books recorded. A pass where
+most book fetches failed prints `NOT GRANTING` and says why: a lease granted on a failed pass is the
+flag it replaces. Whatever lease was live simply lapses.
+
+The basis is recorded and has to be true:
+
+```
+lease 1 [*] granted by run_cycle, expires 2026-09-20T13:02:58.180Z
+basis: cycle completed: 14 contracts registered, 12 of 14 books recorded, 2 skipped
+```
+
+To halt:
+
+```bash
+python3 run_cycle.py --db spine.db --halt "venue reported a settlement dispute"
+```
+
+This revokes **every** live lease, not one — leases overlap during renewal, so revoking a single one
+stops nothing. It does not stop collection: §11.1's halt means *no new exposure*, while monitoring
+and audit writes continue.
+
+Stale data is refused on the same principle rather than warned about. A book older than fifteen
+minutes is not returned by `shadow.book_at()` at all, because a collector that died on Friday should
+not leave Monday pricing against Friday's market.
 
 ## Schema versions
 
