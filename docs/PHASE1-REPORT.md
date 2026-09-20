@@ -2,7 +2,9 @@
 
 **Date:** 19 Sep 2026
 **Status:** Phase 1 gates **PASSED**, with one finding that changes the Phase 3 gate.
-**Validation:** `tests/test_phase1.py` — 33/33. `db/test_schema_v2.py` — 36/36.
+**Validation, as of the Phase 1 gate:** `tests/test_phase1.py` — 33/33.
+`db/test_schema_v2.py` — 36/36. Figures at the gate, not today's; see `README.md` for current
+counts.
 
 ---
 

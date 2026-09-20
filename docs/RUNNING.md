@@ -15,15 +15,17 @@ somebody's recollection of a changelog; running the operation does not. The floo
 as Python 3.10 until that check was written.
 
 ```bash
-python3 run_tests.py        # 22 suites, 1133 checks — run this first
+python3 run_tests.py        # 23 suites, 1220 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
-python3 tests/interop_jcs.py  # canonical form vs ECMAScript; needs node, skips without
+python3 tests/interop_jcs.py       # canonical form vs ECMAScript; needs node, skips without
+python3 tests/interop_rfc3161.py   # timestamp receipts vs OpenSSL; same, with openssl
 ```
 
-The last one is separate because it needs a second language runtime. RFC 8785 delegates number
+The last two are separate because each needs a second toolchain. RFC 8785 delegates number
 and string formatting to ECMAScript, so a JavaScript engine is the authority the spec points at
-rather than a second opinion about it; without one on PATH the check says it was skipped and
-exits zero, having checked nothing and claimed nothing.
+rather than a second opinion about it; RFC 3161 is a wire format, so OpenSSL is an
+implementation that read the spec independently. Without the tool on PATH each check says it was
+skipped and exits zero, having checked nothing and claimed nothing.
 
 ## The one thing this project needs from you
 

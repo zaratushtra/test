@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "phase0"))
+sys.path.insert(0, os.path.join(ROOT, "tests", "fixtures"))
 
 import screen_markets  # noqa: E402
 from spine import (ablation, chain, decision, evaluate, evidence,  # noqa: E402
@@ -374,7 +375,10 @@ def main() -> int:
     ok("chain intact over every registered forecast",
        v.ok and v.length == len(registered), v.summary())
     ok("an unanchored chain says so", v.unanchored_tail == v.length)
-    chain.anchor(con, "rfc3161", "tsa.example/receipt-1", "base64-token", iso(NOW))
+    import rfc3161_fixture as tsfix
+    _gen = tsfix.gen_time_from(iso(NOW))
+    chain.anchor(con, "rfc3161", "tsa.example/receipt-1",
+                 tsfix.receipt_for(chain.head(con), gen_time=_gen), iso(NOW))
     v2 = chain.verify(con)
     ok("anchoring the head covers the record to that point",
        v2.anchored_through == v2.length and v2.unanchored_tail == 0, v2.summary())

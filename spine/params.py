@@ -184,6 +184,19 @@ PARAMS: list[Param] = [
           "with the DOCTYPE/ENTITY refusal, since entity expansion turns a few "
           "hundred bytes into gigabytes.",
           replaced_by="nothing; this is a safety limit, not an estimate"),
+    Param("maximum DER depth", 100, "spine/tsa.MAX_DER_DEPTH", DECLARED,
+          "How deeply a timestamp receipt may nest before the parser refuses. "
+          "A real token is about eight levels at its deepest. Same safety "
+          "argument as canonical.MAX_DEPTH, and set the same way.",
+          replaced_by="nothing; this is a safety limit, not an estimate"),
+    Param("anchor time skew", 300.0, "spine/chain.MAX_ANCHOR_TIME_SKEW_SECONDS",
+          DECLARED,
+          "How far an anchor's claimed anchored_at may sit from the genTime "
+          "the TSA itself asserts. The receipt is the authority; the tolerance "
+          "exists only so a caller reading its own clock a moment later is not "
+          "refused.",
+          replaced_by="measured round-trip time to the timestamp authority, "
+                      "once one is actually being called"),
     Param("maximum payload depth", 64, "spine/canonical.MAX_DEPTH", DECLARED,
           "How deeply a payload may nest before canonicalisation refuses it. "
           "The deepest structure this project actually commits is four levels; "

@@ -73,6 +73,8 @@ tests/test_concurrent.py  two processes, one database
 tests/test_refusals.py    every guard fires and explains itself
 tests/trace_refusals.py   measures which raise sites any suite reaches
 tests/interop_jcs.py      canonical form against ECMAScript, the spec's own authority
+tests/interop_rfc3161.py  timestamp receipts against OpenSSL, in both directions
+tests/test_tsa.py         receipts parsed, bound to a head, and what counts as coverage
 tests/test_splits.py      purging, embargo, leakage verification
 tests/test_sizing.py      sizing, concentration, and not n_eff
 tests/test_untrusted.py   bidi overrides, hostile links, SQL parameterisation
@@ -93,17 +95,22 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 22 suites, 1133 checks
+python3 run_tests.py              # 23 suites, 1220 checks
 python3 run_tests.py --docs       # and check what the documents claim
 python3 tests/trace_refusals.py --verify   # every guard is reached by some test
 python3 tests/interop_jcs.py              # RFC 8785 conformance, against Node's V8
+python3 tests/interop_rfc3161.py          # RFC 3161 receipts, against OpenSSL
 ```
 
-The third reports **157 of 157 raise sites in `spine/` reached** — every refusal in the project
+The third reports **205 of 205 raise sites in `spine/` reached** — every refusal in the project
 is fired by some test, so none of them is a guard whose condition is inverted, or one that crashes
-on the way to raising. The last two to be covered were the ones that cannot fire in a working
-environment: the serialiser's own type check, which `canonicalise()` validates ahead of, and the
-runtime-capability gate, which by construction never trips on a machine that can run this.
+on the way to raising. Two of them were guards that cannot fire in a working
+environment — the serialiser's own type check, which `canonicalise()` validates ahead of, and the
+runtime-capability gate, which by construction never trips on a machine that can run this. One
+turned out to be genuinely unreachable and was removed rather than excused: the DER reader checked
+for the end of input in two places, and `parse_der`'s own empty-input check meant nothing could
+ever reach the other. Merging them is the honest fix, since a guard nothing can reach is a guard
+nobody has checked.
 
 The second one matters more than it sounds. These documents make specific,
 checkable assertions — suite counts, file layouts, schema versions, section

@@ -25,6 +25,7 @@ Stdlib only.
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -83,11 +84,30 @@ def main() -> int:
        all(a == b for a, b in suites), suites)
     print(f"        actual: {n_suites} suites, {n_checks} checks")
 
-    for name, text in (("README.md", readme), ("SPINE-DESIGN-V2.md", design),
-                       ("docs/RUNNING.md", running)):
-        claims = re.findall(r"(\d+)\s+suites?,\s+(\d+)\s+checks", text)
+    # Every markdown file in the repository, not the three that were listed by
+    # hand. docs/CONTROLS-REPORT.md quoted "22 suites, 1121 checks" for two
+    # suite additions running, because it was not on the hand-written list --
+    # which is the failure this check exists to catch, reproduced by the check
+    # itself.
+    documents = [("README.md", readme), ("SPINE-DESIGN-V2.md", design),
+                 ("docs/RUNNING.md", running)]
+    seen = {n for n, _ in documents}
+    for path in sorted(pathlib.Path(ROOT, "docs").rglob("*.md")):
+        rel = str(path.relative_to(ROOT))
+        if rel not in seen and "history" not in path.parts:
+            documents.append((rel, path.read_text(encoding="utf-8")))
+
+    # A phase report records what passed at a gate on a date; its counts are
+    # history and must not drift to match today's. The opt-out is explicit and
+    # per-line -- the line has to say "as of" -- so a stale figure cannot hide
+    # behind a filename, and a document claiming to describe the current state
+    # gets checked against it.
+    for name, text in documents:
+        live = "\n".join(ln for ln in text.splitlines()
+                          if "as of" not in ln.lower())
+        claims = re.findall(r"(\d+)\s+suites?,\s+(\d+)\s+checks", live)
         claims += [(b, a) for a, b in
-                   re.findall(r"(\d+)\s+checks across\s+(\d+)\s+suites", text)]
+                   re.findall(r"(\d+)\s+checks across\s+(\d+)\s+suites", live)]
         if not claims:
             continue
         for cs, cc in claims:

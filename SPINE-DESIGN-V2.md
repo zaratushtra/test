@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 1133 checks across 22 suites (`python3 run_tests.py`), plus 32 documentation-consistency
+code.** 1220 checks across 23 suites (`python3 run_tests.py`), plus 32 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -564,6 +564,42 @@ A hash chain proves internal consistency and detects tampering *within* a chain.
 fabricating an entire chain later with backdated timestamps — and pre-registration is this system's
 core credibility claim. The chain head must be periodically anchored in an independently timestamped
 append-only destination (RFC 3161, or a public log). `chain_anchors` records it.
+
+**And for a long time nothing read the receipt.** `anchor()` took `proof` as an opaque string and
+stored it; `verify()` then counted a forecast as anchored because a row existed. A receipt issued
+for other data, one re-used from an earlier head, and the literal text `base64proof` — which is
+what this project's own Phase 1 test passed — all produced the same report of coverage, while
+`anchor()`'s docstring said "a self-signed value here would prove nothing, which is the whole
+point". The discipline was stated in prose and enforced nowhere, exactly as §12's sequential
+testing had been.
+
+`spine/tsa.py` now parses an RFC 3161 token and answers the one question that can be answered
+offline: **does this receipt's messageImprint commit to the head it claims to anchor?** That is
+what a re-used or mismatched receipt fails, and it needs no network, no clock and no trust. A
+receipt that fails is refused at the point it would enter the record, and `anchored_at` must agree
+with the TSA's own genTime, since the receipt is the authority on when it was issued and the
+caller's clock is not. Coverage is counted from anchors that were checked; a public-log or
+blockchain anchor is still recorded but reported as `unverifiable_anchors` and moves coverage not
+at all, because "recorded" and "checked" are different claims.
+
+What it does **not** establish is who signed the token. There is no signature verification and no
+certificate validation, so a well-formed token minted by anyone passes. That limit is stated in
+the module's own docstring rather than glossed, `signature_checked` is a separate field that is
+always False, and closing it needs the signature over `signedAttrs` verified with the embedded
+certificate, that certificate pinned or chained to a declared root, and the `messageDigest` signed
+attribute checked against the eContent.
+
+The parser is strict about DER rather than lenient about BER — indefinite lengths, non-minimal
+length encodings and trailing bytes are all refused. `tests/interop_rfc3161.py` checks it in both
+directions against OpenSSL: OpenSSL issues a genuine signed token and `spine/tsa.py` must recover
+the same imprint, genTime, serial and policy that `openssl ts -reply -text` reports, and tokens
+from the test fixture are handed back to OpenSSL, which must read out the fields they were built
+with. On malformed input the asserted property is one-directional — never *more lenient* than
+OpenSSL — because refusing something OpenSSL accepts is a choice this project may make, while
+accepting something OpenSSL rejects would mean calling a receipt valid that an auditor's tooling
+calls broken. One deliberate difference shows up there and is reported rather than smoothed over:
+OpenSSL ignores bytes appended after the token, and this project does not, because a stored proof
+with something appended is no longer the receipt that was issued.
 
 ### 9.2 Commit to inputs, not their names
 

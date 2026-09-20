@@ -4,9 +4,12 @@
 **Status:** **Passed on fixtures.** Every layer is built, and for the first time they are joined:
 one dataset now travels from the market screen to a scored, recorded decision in a single process.
 What remains blocked is *live* data, not code.
-**Validation:** `python3 run_tests.py` — 5/5 suites, 236 checks. `tests/test_phase2.py` 67/67,
-`tests/test_phase2b.py` 43/43, `tests/test_e2e.py` 54/54, `db/test_schema_v2.py` 39/39,
-`tests/test_phase1.py` 33/33.
+**Validation, as of 19 Sep 2026:** `python3 run_tests.py` — 5/5 suites, 236 checks.
+`tests/test_phase2.py` 67/67, `tests/test_phase2b.py` 43/43, `tests/test_e2e.py` 54/54,
+`db/test_schema_v2.py` 39/39, `tests/test_phase1.py` 33/33. These are the figures at the gate and
+are deliberately not updated — a phase report records what passed when it passed. `README.md` and
+`docs/RUNNING.md` carry the current counts, and `tests/test_docs.py` checks those against a real
+run.
 
 ---
 

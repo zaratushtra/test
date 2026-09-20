@@ -17,6 +17,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures"))
 
 from spine import chain, ledger, params, timeutil  # noqa: E402
 from spine.canonical import (  # noqa: E402
@@ -189,10 +190,24 @@ def main() -> int:
     v = chain.verify(con)
     ok("unanchored chain reports its exposure",
        v.ok and v.anchored_through == 0 and v.unanchored_tail == 2, v.summary())
-    chain.anchor(con, "rfc3161", "tsa://example/123", "base64proof", T)
+    # This line used to pass the string "base64proof" and the chain counted it
+    # as coverage. An anchor is now only coverage if its receipt parses and
+    # commits to the head it names.
+    import rfc3161_fixture as tsfix
+    ok("a receipt for somebody else's data is refused at the point of record",
+       raises(lambda: chain.anchor(con, "rfc3161", "tsa://example/0",
+                                   tsfix.receipt_for("ff" * 32), T), chain.ChainError))
+    ok("...and so is a placeholder that is not a receipt at all",
+       raises(lambda: chain.anchor(con, "rfc3161", "tsa://example/0",
+                                   "base64proof", T), chain.ChainError))
+    gen = tsfix.gen_time_from(T)
+    chain.anchor(con, "rfc3161", "tsa://example/123",
+                 tsfix.receipt_for(chain.head(con), gen_time=gen), T)
     v = chain.verify(con)
     ok("anchored chain reports coverage",
        v.ok and v.anchored_through == 2 and v.unanchored_tail == 0, v.summary())
+    ok("...and says the anchor was checked, not merely filed",
+       v.verified_anchors == 1 and v.unverifiable_anchors == 0, v.summary())
     reg(con, p_est_bp=5000, p_lo_bp=4500, p_hi_bp=5600)
     v = chain.verify(con)
     ok("records after the anchor are flagged as not time-proven",

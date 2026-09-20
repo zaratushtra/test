@@ -20,6 +20,7 @@ SUITES = [
     ("schema", "db/test_schema_v2.py"),
     ("phase 1 — ledger, chain, point-in-time", "tests/test_phase1.py"),
     ("reference classes", "tests/test_refclass.py"),
+    ("timestamp receipts and anchors", "tests/test_tsa.py"),
     ("phase 2 — scoring, decision, sequential", "tests/test_phase2.py"),
     ("phase 2 — models and ablations", "tests/test_phase2b.py"),
     ("temporal splits", "tests/test_splits.py"),
