@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 1079 checks across 22 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 1089 checks across 22 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -685,6 +685,12 @@ no stated basis is a flag with a timer on it), **cannot be extended** (the schem
 `UPDATE ... SET expires_at`, because extending converts "this was true a moment ago" into "this is
 true until further notice"), and is never deleted, since the leases are the record of when action
 was permitted.
+
+**A lease dated ahead of the clock is refused.** Varying time rather than data found the inverse of
+this section's whole property: a grant stamped by a clock running fast reads as not-permitted now
+and permitted two hours later — permission that switches itself **on** with nobody acting. A lease
+attests to a check that happened, and a check cannot have happened in the future, so `grant()`
+refuses beyond a small skew allowance and `pending()` reports any a restored database already holds.
 
 **Halt and lapse are different events, and halt is not "revoke a lease".** Revoking one lease stops
 nothing while another covering the same instant is still live — which renewal guarantees, since

@@ -227,6 +227,15 @@ PARAMS: list[Param] = [
           replaced_by="the measured distribution of price movement over elapsed "
                       "time, per event family: the age at which a book stops "
                       "predicting the current touch"),
+    Param("grant skew allowance", 60.0,
+          "spine/lease.MAX_GRANT_SKEW_SECONDS", DECLARED,
+          "How far ahead of the clock a lease may be stamped. The only "
+          "legitimate cause is skew between whatever ran the checks and the "
+          "database host; anything larger is permission that would arm itself "
+          "later, which is the inverse of the property §11.1 exists for.",
+          replaced_by="the observed clock offset between the collector and the "
+                      "database host, once both are real machines"),
+
     Param("lease duration", 900.0, "spine/lease.DEFAULT_TTL_SECONDS", DECLARED,
           "Long enough to survive an ordinary collection cycle, short enough "
           "that a dead collector stops mattering within one. §11.1: a lease "

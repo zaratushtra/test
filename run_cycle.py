@@ -281,6 +281,16 @@ def main() -> int:
 
     live, why = lease.permitted(con)
     print(f"  action {'PERMITTED' if live else 'NOT PERMITTED'}: {why}")
+    # A lease dated ahead of the clock would arm itself later with nobody
+    # acting. grant() refuses to create one, but a restored database can hold
+    # one, and permission that appears on its own is the hardest kind to notice.
+    ahead = lease.pending(con)
+    if ahead:
+        print(f"  WARNING: {len(ahead)} lease(s) dated in the future would "
+              "become live on their own:")
+        for p_ in ahead[:3]:
+            print(f"    lease {p_['id']} by {p_['granted_by']} starts "
+                  f"{p_['granted_at']}")
 
     # ---------------------------------------------------------- evaluation
     banner("EVALUATION")

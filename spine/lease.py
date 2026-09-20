@@ -42,6 +42,11 @@ from . import timeutil
 # collector stops mattering within one.
 DEFAULT_TTL_SECONDS = 900.0
 
+# How far ahead of the clock a grant may be stamped. Small, because the only
+# legitimate cause is skew between whatever ran the checks and the database
+# host; anything larger is a lease that would arm itself later.
+MAX_GRANT_SKEW_SECONDS = 60.0
+
 ALL_SCOPES = "*"
 
 
@@ -100,6 +105,18 @@ def grant(
             "timer on it")
 
     start = timeutil.canonical(granted_at) if granted_at else timeutil.now()
+    # A lease attests to a check that happened, and a check cannot have happened
+    # in the future. Without this, a grant stamped by a clock running fast is a
+    # permission that switches itself ON later with nobody acting -- the exact
+    # inverse of the property this module exists for. Measured: a lease stamped
+    # two hours ahead reads as not-permitted now and permitted in two hours.
+    skew = (timeutil.parse(start) - timeutil.parse(timeutil.now())).total_seconds()
+    if skew > MAX_GRANT_SKEW_SECONDS:
+        raise LeaseError(
+            f"granted_at is {skew:.0f}s in the future, beyond the "
+            f"{MAX_GRANT_SKEW_SECONDS:.0f}s skew allowance. A lease attests to a "
+            "check that happened; one dated ahead would arm itself later, which "
+            "is the opposite of failing safe")
     expires = timeutil.iso(timeutil.parse(start) + timedelta(seconds=ttl_seconds))
     cur = con.execute(
         """INSERT INTO health_leases
@@ -232,3 +249,22 @@ def permitted(con: sqlite3.Connection, as_of: str | None = None,
     return False, (f"the last lease for scope {scope!r} expired at {expires}. "
                    "Nothing revoked it — it lapsed, which is what a lease does "
                    "when whatever was meant to renew it stopped")
+
+
+def pending(con: sqlite3.Connection, as_of: str | None = None,
+            scope: str = ALL_SCOPES) -> list[dict]:
+    """
+    Leases dated after `as_of` — permission that would arm itself later.
+
+    `grant()` refuses to create one, but a database restored from elsewhere, or
+    written before that guard existed, can hold them. Worth being able to ask,
+    because a lease nobody granted *today* becoming live tomorrow is the
+    hardest kind of permission to notice.
+    """
+    ts = timeutil.canonical(as_of) if as_of else timeutil.now()
+    cur = con.execute(
+        "SELECT id, scope, granted_at, expires_at, granted_by, basis "
+        "FROM health_leases WHERE granted_at > ? AND scope IN (?, ?) "
+        "AND revoked_at IS NULL ORDER BY granted_at", (ts, scope, ALL_SCOPES))
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]

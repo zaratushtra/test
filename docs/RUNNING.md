@@ -9,7 +9,7 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
-python3 run_tests.py        # 22 suites, 1079 checks — run this first
+python3 run_tests.py        # 22 suites, 1089 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 
@@ -152,6 +152,11 @@ The basis is recorded and has to be true:
 lease 1 [*] granted by run_cycle, expires 2026-09-20T13:02:58.180Z
 basis: cycle completed: 14 contracts registered, 12 of 14 books recorded, 2 skipped
 ```
+
+A lease stamped **ahead** of the clock is refused, beyond a 60-second skew allowance. A lease
+attests to a check that happened, and one dated ahead would arm itself later with nobody acting —
+the inverse of the property the whole mechanism exists for. Each cycle also warns if the database
+already holds one, since a restored database can.
 
 To halt:
 

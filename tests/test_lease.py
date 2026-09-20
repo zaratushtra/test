@@ -154,6 +154,51 @@ def main() -> int:
            (at(), at(hours=1), at(minutes=30))), sqlite3.IntegrityError))
     print(f"        {why}")
 
+    print("\n[4b] A lease dated ahead would arm itself later\n")
+    # The inverse of the property this module exists for. A clock running fast
+    # when the monitor granted produces permission that switches itself ON with
+    # nobody acting -- measured before the guard: not permitted now, permitted
+    # in two hours.
+    real = timeutil.now()
+    con_sk = ledger.connect(":memory:", create=True)
+    ok("a grant stamped two hours ahead is refused",
+       raises(lambda: lease.grant(
+           con_sk, granted_by="m", basis="b",
+           granted_at=timeutil.iso(timeutil.parse(real) + timedelta(hours=2))),
+           LeaseError))
+    ok("...because a check cannot have happened in the future",
+       "check that happened" in _msg(lambda: lease.grant(
+           con_sk, granted_by="m", basis="b",
+           granted_at=timeutil.iso(timeutil.parse(real) + timedelta(hours=2)))))
+    ok("...and the message names it as the opposite of failing safe",
+       "opposite of failing safe" in _msg(lambda: lease.grant(
+           con_sk, granted_by="m", basis="b",
+           granted_at=timeutil.iso(timeutil.parse(real) + timedelta(hours=2)))))
+    ok("ordinary clock skew is tolerated",
+       lease.grant(con_sk, granted_by="m", basis="b",
+                   granted_at=timeutil.iso(
+                       timeutil.parse(real) + timedelta(seconds=30))).id > 0)
+    ok("a lease stamped in the past is fine; only the future is suspect",
+       lease.grant(con_sk, granted_by="m", basis="b",
+                   granted_at=timeutil.iso(
+                       timeutil.parse(real) - timedelta(hours=5))).id > 0)
+
+    # A database written before the guard, or restored from elsewhere, can
+    # still hold one -- so it must be possible to ask.
+    con_p = ledger.connect(":memory:", create=True)
+    con_p.execute(
+        "INSERT INTO health_leases(scope,granted_at,expires_at,granted_by,basis) "
+        "VALUES('*',?,?,'legacy','written before the guard existed')",
+        (at(hours=2), at(hours=3)))
+    con_p.commit()
+    ok("a lease dated ahead is reported as pending",
+       len(lease.pending(con_p, at())) == 1, lease.pending(con_p, at()))
+    ok("...and is not permitting anything yet",
+       not lease.permitted(con_p, at())[0])
+    ok("...but would, later, which is why it is worth asking about",
+       lease.permitted(con_p, at(hours=2, minutes=30))[0])
+    ok("a clean database has nothing pending", lease.pending(con, at()) == [])
+
     print("\n[5] Scope falls back, so a global halt stops everything\n")
     con2 = ledger.connect(":memory:", create=True)
     lease.grant(con2, granted_by="m", basis="all systems checked",
