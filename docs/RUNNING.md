@@ -9,7 +9,7 @@ no key handling and no signing code — so no account, wallet or KYC is involved
 Python 3.10+ and SQLite 3.37+ (STRICT tables). No installs, no dependencies.
 
 ```bash
-python3 run_tests.py        # 22 suites, 1068 checks — run this first
+python3 run_tests.py        # 22 suites, 1079 checks — run this first
 python3 run_tests.py --docs # and verify the documentation's own claims
 ```
 
@@ -166,6 +166,21 @@ and audit writes continue.
 Stale data is refused on the same principle rather than warned about. A book older than fifteen
 minutes is not returned by `shadow.book_at()` at all, because a collector that died on Friday should
 not leave Monday pricing against Friday's market.
+
+## Interrupted passes
+
+`run_query` has to write its run row before any provenance can reference it, so a process killed in
+between leaves a run reporting less than it ingested. Not a large window, and not a theoretical one:
+the collector runs unattended for months, and over that span every window gets hit.
+
+`run_cycle.py --sweep` checks for it each pass and repairs from the provenance rows, which are the
+ground truth — they exist only because an item was actually ingested. `collect.orphaned_items()`
+finds the other half: an item ingested but never linked to the query that retrieved it, which has no
+anchor and so cannot be clustered.
+
+The discipline this protects is the one collection was built around — a failed run is recorded *as a
+run*, because a gap that looks like "no news that day" is indistinguishable from evidence of quiet.
+A run that under-reports is the same failure in a quieter form.
 
 ## Running the collector while you work
 

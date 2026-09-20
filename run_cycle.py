@@ -238,6 +238,19 @@ def main() -> int:
             for r in failed[:6]:
                 print(f"    {r.summary()}")
 
+        # A crash between writing a run row and recording what it ingested
+        # leaves the run under-reporting. Checked every cycle, because the
+        # collector is meant to run unattended for months and every window
+        # gets hit over that span.
+        drift = collect.reconcile(con)
+        orphans = collect.orphaned_items(con)
+        if drift or orphans:
+            print(f"  {len(drift)} run(s) under-reporting, {len(orphans)} "
+                  "item(s) with no provenance — from an interrupted pass")
+            if drift:
+                collect.reconcile(con, repair=True)
+                print("  counts rebuilt from the provenance rows")
+
     # ---------------------------------------------------------- health lease
     banner("HEALTH LEASE")
     # §11.1. The basis has to be TRUE: a lease is an attestation, and one

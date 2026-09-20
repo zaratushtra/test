@@ -233,6 +233,54 @@ def main() -> int:
     print(f"        {mixed.summary()}")
     feeds["https://cw.test/rss"] = RSS
 
+    print("\n[4c] A crash mid-run leaves a detectable inconsistency\n")
+    ok("a completed run reconciles clean", collect.reconcile(con) == [])
+    ok("...and no item is left without provenance",
+       collect.orphaned_items(con) == [])
+
+    # Simulate the window: run_query must write its run row before any
+    # provenance can reference it, so a process killed in between leaves a run
+    # under-reporting what it did.
+    run_id = con.execute("SELECT id FROM collection_runs WHERE outcome='ok' "
+                         "ORDER BY id DESC LIMIT 1").fetchone()[0]
+    con.execute("UPDATE collection_runs SET entries_ingested=0, "
+                "entries_duplicate=0 WHERE id=?", (run_id,))
+    con.commit()
+    bad = collect.reconcile(con)
+    ok("a run whose counts disagree with its provenance is found",
+       len(bad) == 1 and bad[0]["id"] == run_id, bad)
+    ok("...and the report says how many rows actually point at it",
+       bad[0]["linked"] > 0, bad)
+    ok("reconcile does not repair unless asked",
+       con.execute("SELECT entries_ingested FROM collection_runs WHERE id=?",
+                   (run_id,)).fetchone()[0] == 0)
+    collect.reconcile(con, repair=True)
+    ok("repair rebuilds the counts from the provenance rows",
+       con.execute("SELECT entries_ingested FROM collection_runs WHERE id=?",
+                   (run_id,)).fetchone()[0] == bad[0]["linked"])
+    ok("...and says so in the run's detail",
+       "reconciled" in (con.execute(
+           "SELECT detail FROM collection_runs WHERE id=?",
+           (run_id,)).fetchone()[0] or ""))
+    ok("afterwards nothing is outstanding", collect.reconcile(con) == [])
+
+    # An item ingested but never linked: the other half of the same window.
+    # In its own database, because the main fixture asserts further down that
+    # every item traces back to a query -- which is exactly the invariant an
+    # orphan breaks, and the point of finding them.
+    con_o = ledger.connect(":memory:", create=True)
+    src_o = evidence.ensure_source(con_o, "Orphan Source", "outlet", now=at())
+    orphan = evidence.ingest_item(con_o, src_o, "An item nothing claims.",
+                                  first_seen_at=at(hours=9),
+                                  item_class="reportage", now=at(hours=9))
+    ok("an item with no provenance is found",
+       collect.orphaned_items(con_o) == [orphan.item_id],
+       collect.orphaned_items(con_o))
+    ok("...because an unclaimed item has no anchor to check",
+       con_o.execute("SELECT COUNT(*) FROM item_provenance WHERE item_id=?",
+                     (orphan.item_id,)).fetchone()[0] == 0)
+    ok("the main record is still clean", collect.orphaned_items(con) == [])
+
     # ---------------------------------------------------- provenance
     print("\n[5] Provenance makes the anchor checkable\n")
     items = collect.anchored_items(con, pid, at(hours=5))

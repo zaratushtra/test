@@ -324,6 +324,14 @@ def run_query(
 
     ingested, duplicate, ids = 0, 0, []
     rejected: list[str] = []
+    provenance: list[tuple[int, int, int]] = []
+    # The run row must exist before any provenance can reference it, so it is
+    # written first with zero counts and corrected at the end. That leaves a
+    # window: a crash mid-ingestion leaves a run claiming nothing was ingested
+    # while items carry its id -- a lie in the very audit trail that exists so
+    # failures cannot hide. The window is narrowed by batching the provenance
+    # into the same transaction as the count correction, and what remains is
+    # made *detectable* rather than pretended away: see reconcile().
     rid = record("ok", len(entries), 0, 0)
     for e in entries:
         # A feed that yields an entry this module cannot ingest -- no text, an
@@ -345,12 +353,16 @@ def run_query(
         else:
             ingested += 1
         ids.append(res.item_id)
-        con.execute(
-            "INSERT OR IGNORE INTO item_provenance(item_id, query_id, run_id) "
-            "VALUES (?,?,?)", (res.item_id, query["id"], rid))
+        provenance.append((res.item_id, query["id"], rid))
 
     detail = (f"{len(rejected)} entr{'y' if len(rejected) == 1 else 'ies'} "
               f"rejected: " + "; ".join(rejected[:3])) if rejected else None
+    # Provenance and the corrected counts land together, so a reader never sees
+    # a run whose count disagrees with the rows pointing at it -- except after
+    # a crash, which reconcile() finds.
+    con.executemany(
+        "INSERT OR IGNORE INTO item_provenance(item_id, query_id, run_id) "
+        "VALUES (?,?,?)", provenance)
     con.execute(
         "UPDATE collection_runs SET entries_ingested=?, entries_duplicate=?, "
         "detail=? WHERE id=?", (ingested, duplicate, detail, rid))
@@ -395,3 +407,59 @@ def anchored_items(con: sqlite3.Connection, proposition_id: int,
         (proposition_id, as_of))
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def reconcile(con: sqlite3.Connection, repair: bool = False) -> list[dict]:
+    """
+    Find runs whose recorded counts disagree with the rows pointing at them.
+
+    `run_query` writes its run row before it can know the counts, because
+    `item_provenance` references it. A process killed in between leaves a run
+    reporting less than it did. That is not a large window and it is not a
+    theoretical one: the collector is meant to run unattended for months, and
+    over that span every window gets hit.
+
+    The discipline this protects is the one in `run_query`'s own docstring — a
+    failed run is recorded as a run, because a gap that looks like "no news that
+    day" is indistinguishable from evidence of quiet. A run that under-reports
+    is the same failure in a quieter form.
+
+    `repair=True` rewrites the counts from the provenance rows, which are the
+    ground truth: they exist only because an item was actually ingested.
+    """
+    cur = con.execute(
+        """SELECT r.id, r.entries_seen, r.entries_ingested, r.entries_duplicate,
+                  COUNT(DISTINCT p.item_id) AS linked
+           FROM collection_runs r
+           LEFT JOIN item_provenance p ON p.run_id = r.id
+           WHERE r.outcome = 'ok'
+           GROUP BY r.id
+           HAVING linked <> r.entries_ingested + r.entries_duplicate""")
+    cols = [d[0] for d in cur.description]
+    bad = [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    if repair:
+        for run in bad:
+            # Everything linked that is not a duplicate of an earlier run's item
+            # counts as ingested. The duplicate count cannot be recovered after
+            # the fact, so it is folded in rather than invented.
+            con.execute(
+                "UPDATE collection_runs SET entries_ingested=?, "
+                "entries_duplicate=0, detail=COALESCE(detail,'') || "
+                "' [reconciled: counts rebuilt from provenance]' WHERE id=?",
+                (run["linked"], run["id"]))
+        con.commit()
+    return bad
+
+
+def orphaned_items(con: sqlite3.Connection) -> list[int]:
+    """
+    Items with no provenance at all.
+
+    An item that no query claims cannot have its anchor checked, which is the
+    whole basis of the clustering architecture. These come from a crash between
+    ingesting an item and recording what retrieved it.
+    """
+    return [r[0] for r in con.execute(
+        "SELECT i.id FROM signal_items i WHERE NOT EXISTS "
+        "(SELECT 1 FROM item_provenance p WHERE p.item_id = i.id) ORDER BY i.id")]
