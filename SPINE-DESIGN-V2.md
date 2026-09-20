@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 688 checks across 13 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 723 checks across 14 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -745,6 +745,30 @@ be validated on any human timescale, while T1 and T2 do not use them.
 
 The constraint drops NewsGuard and paid news APIs. That is survivable — §7.2 already required source
 independence be learned from observed behaviour rather than bought as a vendor score.
+
+---
+
+## 13c. What this project is taking on faith
+
+Every tunable number is registered in `spine/params.py` with its provenance, and
+`tests/test_params.py` refuses to let an unregistered constant exist in `spine/`. Four kinds:
+
+| provenance | meaning | changing it means |
+|---|---|---|
+| `derived` | follows from a definition or identity | the definition changed |
+| `measured` | produced by an analysis in this repo, named in the entry | re-running that analysis |
+| `external` | a fact about the world or a venue, dated | re-checking, because these expire |
+| `declared` | somebody chose it | nothing here supports it |
+
+**14 of 21 are `declared`.** That is the honest state of a project with no record yet, and stating it
+as a proportion is more useful than defending each one individually. A `declared` entry must name
+what would replace it — the registry refuses to construct one otherwise, because a declared
+parameter with no replacement path is indistinguishable from a measurement nobody made.
+
+The list is meant to shrink. `min_edge_bp` is waiting on realised costs from
+`shadow.adverse_selection_report()`; the influence caps on out-of-sample Brier; the assumed source
+correlations on observed error agreement. Each of those is blocked on the same thing as everything
+else here — a record.
 
 ---
 

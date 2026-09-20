@@ -15,6 +15,7 @@ import sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SUITES = [
     ("timestamps", "tests/test_timeutil.py"),
+    ("parameter registry", "tests/test_params.py"),
     ("schema", "db/test_schema_v2.py"),
     ("phase 1 — ledger, chain, point-in-time", "tests/test_phase1.py"),
     ("reference classes", "tests/test_refclass.py"),

@@ -45,6 +45,7 @@ phase1/sequential_peeking.py  what unbudgeted peeking costs, and the fix
 spine/registry.py         screened markets -> contracts; rules-version identity
 spine/evidence.py         signals -> claims -> contract effects; the influence budget
 spine/shadow.py           recorded books, queue fills, markouts, adverse selection
+spine/params.py           every tunable number, with how it was arrived at
 spine/refclass.py         freeze a reference class from its roster; load it back
 spine/timeutil.py         one canonical timestamp; point-in-time comparison depends on it
 spine/evaluate.py         resolutions -> scores -> verdict; settlement divergence
@@ -58,6 +59,7 @@ tests/test_phase2.py      Phase 2 validation — scoring, decision
 tests/test_phase2b.py     Phase 2 validation — models, ablations
 tests/test_evidence.py    evidence pipeline validation
 tests/test_shadow.py      shadow execution validation
+tests/test_params.py      the registry as a gate: no unregistered constants
 tests/test_refclass.py    freezing, immutability, hazard reconstruction
 tests/test_timeutil.py    timestamp canonicalisation and the ordering bug
 tests/test_docs.py        the documents' claims, checked against the code
@@ -75,7 +77,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 13 suites, 688 checks
+python3 run_tests.py              # 14 suites, 723 checks
 python3 run_tests.py --docs       # and check what the documents claim
 ```
 
@@ -109,7 +111,7 @@ module, which is how two components can both pass and still not join.
 
 Stdlib only; no installs. Requires Python 3.10+ and SQLite 3.37+ (STRICT tables).
 
-## Four results worth knowing before reading anything else
+## Five results worth knowing before reading anything else
 
 **The probability firewall was removed.** Capping the probability of an event by
 horizon class confuses it with confidence in the estimate; the v1 schema rejected
@@ -138,3 +140,16 @@ and a forecast recorded at an instant was invisible to a decision made at that
 same instant. One canonical format, seventeen schema `CHECK ... GLOB`
 constraints, and a ledger that validates rather than coerces the hash-committed
 field. See `docs/EVALUATION-REPORT.md` §1.
+
+**Two thirds of the tunable numbers are declared, not measured.** `spine/params.py`
+registers every one with its provenance — `measured` (and which simulation
+produced it), `derived` (and from which identity), `external` (with a date,
+because those expire), or `declared`. **14 of 21 are `declared`**: somebody chose
+them and nothing in this repository supports them. That is an honest state for a
+project with no record yet, and it is worth being able to read in one go rather
+than inferring from a dozen scattered constants that all look equally like facts.
+
+A `declared` parameter must name what would replace it, or the registry refuses
+to construct it — a declared parameter with no replacement path is
+indistinguishable from a measurement nobody made. `python3 spine/params.py`
+prints the list.
