@@ -69,6 +69,8 @@ tests/test_params.py      the registry as a gate: no unregistered constants
 tests/test_lease.py       leases, halts, and the stale-book bug
 tests/test_conditional.py the dropped branch, and a 198x sensitivity band
 tests/test_scale.py       the hot paths at a year of record, not fixture size
+tests/test_refusals.py    every guard fires and explains itself
+tests/trace_refusals.py   measures which raise sites any suite reaches
 tests/test_splits.py      purging, embargo, leakage verification
 tests/test_sizing.py      sizing, concentration, and not n_eff
 tests/test_untrusted.py   bidi overrides, hostile links, SQL parameterisation
@@ -89,8 +91,9 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 20 suites, 997 checks
+python3 run_tests.py              # 21 suites, 1048 checks
 python3 run_tests.py --docs       # and check what the documents claim
+python3 tests/trace_refusals.py --verify   # every guard is reached by some test
 ```
 
 The second one matters more than it sounds. These documents make specific,

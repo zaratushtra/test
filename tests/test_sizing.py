@@ -16,6 +16,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "tests"))  # tests_support
+
 
 from spine import evaluate, ledger, sizing  # noqa: E402
 from spine.decision import BookLevel  # noqa: E402
