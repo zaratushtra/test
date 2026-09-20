@@ -175,6 +175,46 @@ without both.
 
 ---
 
+## 6b. Clustering was quadratic, and the window did not save it
+
+The first implementation compared every pair of items, checking the time window as the first line of
+the inner loop. That sounds like it bounds the work and does not: with items minutes apart and a
+72-hour window, every pair is inside it. Measured, and cleanly quadratic:
+
+| items | all-pairs |
+|---|---|
+| 300 | 0.5s |
+| 1,200 | 8.8s |
+| 4,000 | 52s |
+
+Extrapolating, twenty thousand items is about forty minutes — and a collector running for a month
+produces that. `anchored_items()` returns everything ever collected for a proposition, so the input
+grows without bound over exactly the timescale the study runs on.
+
+Two changes. **Anchored items merge by anchor with no text comparison at all**, which is what the
+anchor is for. **Text comparison runs over candidates from an inverted index**, since overlap above
+zero requires at least one shared shingle, so the index finds every pair that could clear a
+threshold and skips the rest — and the rest is nearly everything.
+
+The shingle index alone was not enough, which is worth recording because it is the kind of fix that
+looks sufficient: 4,000 unanchored items still took 52s. A 5-shingle is nearly unique so its index
+gives a small candidate set, but a *content word* is not — a handful of tokens appear in most
+documents, so indexing them puts the whole corpus in every candidate list. Topic tokens are
+therefore pruned by document frequency, which is standard blocking and is **an approximation**: two
+documents whose only shared vocabulary is corpus-common can now be missed. That is the under-merging
+direction this fallback path already accepts.
+
+| items | after |
+|---|---|
+| 1,200 | 0.3s |
+| 4,000 | 1.0s |
+| 12,000 | 3.4s |
+
+Essentially linear, and duplicates are still found exactly — 4,000 items with 30% syndicated copies
+gives 2,800 clusters, which is the right answer.
+
+---
+
 ## 7. Next
 
 1. ~~Point the collector at real feeds.~~ **Collector built** (`spine/collect.py`, 42/42): queries

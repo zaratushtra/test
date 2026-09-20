@@ -61,6 +61,11 @@ ASSUMED_OWNERSHIP_CORRELATION = 0.75
 # Identical content under two mastheads is one artifact, whatever the bylines.
 SYNDICATION_CORRELATION = 1.0
 
+# A topic token appearing in more than this fraction of unanchored documents is
+# not discriminative, and indexing it puts the whole corpus in every candidate
+# list. Blocking on the rest is what keeps clustering from being quadratic.
+MAX_TOKEN_DOC_FRACTION = 0.10
+
 # The influence cap by what the claim actually establishes (§7.1). This caps
 # *exposure to the claim*, never the claim's estimate — the same distinction
 # §5.1 draws for probabilities. A claim that establishes only that someone said
@@ -376,20 +381,77 @@ def cluster_items(
 
     anchors = {it["id"]: (it.get("anchor") or "") for it in items}
     dup_pairs = 0
-    ids = [it["id"] for it in items]
-    for i, a in enumerate(ids):
-        for b in ids[i + 1:]:
-            if abs((times[a] - times[b]).total_seconds()) > window_hours * 3600:
-                continue
-            ov = overlap(shingled[a], shingled[b])
-            if ov >= duplicate_threshold:
+    ids = sorted((it["id"] for it in items), key=lambda x: times[x])
+    window = timedelta(hours=window_hours)
+
+    # Anchored items merge by anchor, with no text comparison at all: that is
+    # what the anchor is for.
+    by_anchor: dict[str, list[int]] = {}
+    for i in ids:
+        if anchors[i]:
+            by_anchor.setdefault(anchors[i], []).append(i)
+    for members in by_anchor.values():
+        for m in members[1:]:
+            if times[m] - times[members[0]] <= window:
+                union(members[0], m)
+
+    # Text comparison runs over CANDIDATES, not over all pairs. Overlap above
+    # zero requires at least one shared shingle, so an inverted index finds
+    # every pair that could clear a threshold and skips the rest — and the rest
+    # is nearly everything.
+    #
+    # The previous version compared all pairs and checked the time window
+    # first, which sounds like it bounds the work and does not: with items
+    # minutes apart and a 72-hour window, every pair is inside it. Measured at
+    # 8.8s for 1200 items, cleanly quadratic, about forty minutes at twenty
+    # thousand — and a collector running for a month produces that.
+    def candidates(index, key, item, cutoff):
+        seen = set()
+        for token in key[item]:
+            for other in index.get(token, ()):  # earlier in time order
+                if other not in seen and times[item] - times[other] <= cutoff:
+                    seen.add(other)
+        return seen
+
+    # Topic tokens need frequency pruning; shingles do not. A 5-shingle is
+    # nearly unique, so its index gives a small candidate set. A content word is
+    # not: in any real corpus a handful of tokens appear in most documents, so
+    # indexing them puts nearly the whole set in every candidate list and the
+    # index saves nothing. Measured: with the shingle index alone, 4000
+    # unanchored items still took 52s and stayed quadratic.
+    #
+    # Skipping corpus-common tokens is standard blocking for near-duplicate
+    # detection, and it is an APPROXIMATION: two documents whose only shared
+    # vocabulary is corpus-common can now be missed. That is the under-merging
+    # direction, which this fallback path already accepts (see the docstring) —
+    # and a pair sharing only common words was unlikely to clear the threshold.
+    doc_freq: dict[str, int] = {}
+    unanchored = [i for i in ids if not anchors[i]]
+    for i in unanchored:
+        for tk in topics[i]:
+            doc_freq[tk] = doc_freq.get(tk, 0) + 1
+    freq_cap = max(2, int(len(unanchored) * MAX_TOKEN_DOC_FRACTION))
+    discriminative = {i: {tk for tk in topics[i] if doc_freq.get(tk, 0) <= freq_cap}
+                      for i in unanchored}
+
+    shingle_index: dict[str, list[int]] = {}
+    topic_index: dict[str, list[int]] = {}
+    for a in ids:
+        for other in candidates(shingle_index, shingled, a, window):
+            if overlap(shingled[a], shingled[other]) >= duplicate_threshold:
                 dup_pairs += 1
-                union(a, b)
-            elif anchors[a] and anchors[a] == anchors[b]:
-                union(a, b)
-            elif not anchors[a] and not anchors[b] and \
-                    overlap(topics[a], topics[b]) >= topic_threshold:
-                union(a, b)
+                union(a, other)
+        if not anchors[a]:
+            for other in candidates(topic_index, discriminative, a, window):
+                if (not anchors[other]
+                        and find(a) != find(other)
+                        and overlap(topics[a], topics[other]) >= topic_threshold):
+                    union(a, other)
+        for sh in shingled[a]:
+            shingle_index.setdefault(sh, []).append(a)
+        if not anchors[a]:
+            for tk in discriminative[a]:
+                topic_index.setdefault(tk, []).append(a)
 
     by_root: dict[int, list[int]] = {}
     for i in ids:

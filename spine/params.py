@@ -139,6 +139,17 @@ PARAMS: list[Param] = [
           "corroboration as certainty.",
           replaced_by="the observed spread of realised outcomes against interval "
                       "width, i.e. coverage"),
+    Param("token frequency cap", 0.10, "spine/evidence.MAX_TOKEN_DOC_FRACTION",
+          DECLARED,
+          "A topic token in more than a tenth of unanchored documents is not "
+          "discriminative, and indexing it puts the whole corpus in every "
+          "candidate list. Standard blocking for near-duplicate detection, and "
+          "an approximation: two documents sharing only corpus-common "
+          "vocabulary can be missed, which is the under-merging direction this "
+          "fallback path already accepts.",
+          replaced_by="proper IDF weighting, or nothing — the anchor is the "
+                      "real answer and this path is a fallback"),
+
     Param("near-duplicate threshold", 0.60,
           "spine/evidence.cluster_items(duplicate_threshold=)", DECLARED,
           "5-shingle Jaccard above which two texts are the same story. "

@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from spine import evidence, ledger, registry  # noqa: E402
+from spine import evidence, ledger, registry, timeutil  # noqa: E402
 from spine.evidence import EvidenceError  # noqa: E402
 
 PASS, FAIL = [], []
@@ -247,6 +247,42 @@ def main() -> int:
     print(f"        v1 cluster {c0.cluster_id}: {len(c0.item_ids)} items, "
           f"{c0.near_duplicate_pairs} duplicate pairs, "
           f"originator {c0.originators or 'none identified'}")
+
+    print("\n[5b] Clustering has to survive a real corpus\n")
+    import random as _rnd
+    import time as _time
+    from datetime import timedelta as _td
+    _r = _rnd.Random(7)
+    _vocab = [f"w{i}" for i in range(400)]
+    big_con = ledger.connect(":memory:", create=True)
+    big_src = evidence.ensure_source(big_con, "Bulk", "outlet")
+    N = 3000
+    uniq = [" ".join(_r.choice(_vocab) for _ in range(60)) + f" story {i}"
+            for i in range(int(N * 0.8))]
+    big_items = []
+    for i in range(N):
+        big_con.execute(
+            "INSERT INTO signal_items(content_hash,source_id,first_seen_at,"
+            "artifact_created_at,available_for_decision_at,item_class) "
+            "VALUES(?,?,?,?,?,'reportage')",
+            (f"bulk{i}", big_src, at(), "x", timeutil.iso(NOW + _td(minutes=i))))
+        big_items.append({"id": i + 1, "body": uniq[i % len(uniq)],
+                          "available_for_decision_at":
+                              timeutil.iso(NOW + _td(minutes=i))})
+    big_con.commit()
+    t0 = _time.monotonic()
+    big_clusters = evidence.cluster_items(big_con, big_items, cluster_version=1)
+    elapsed = _time.monotonic() - t0
+    # The all-pairs version measured 52s at 4000 items and was cleanly
+    # quadratic -- about forty minutes at twenty thousand, which a collector
+    # running for a month produces.
+    ok(f"{N} items cluster in well under a minute", elapsed < 20.0,
+       f"{elapsed:.1f}s")
+    ok("...and the duplicates are still found exactly",
+       len(big_clusters) == len(uniq), (len(big_clusters), len(uniq)))
+    ok("...with every item placed in exactly one cluster",
+       sum(len(c.item_ids) for c in big_clusters) == N)
+    print(f"        {N} items -> {len(big_clusters)} clusters in {elapsed:.2f}s")
 
     # ------------------------------------------------ claims
     print("\n[6] Four verification questions, answered separately\n")
