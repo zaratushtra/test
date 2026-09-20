@@ -47,6 +47,7 @@ spine/evidence.py         signals -> claims -> contract effects; the influence b
 spine/shadow.py           recorded books, queue fills, markouts, adverse selection
 spine/params.py           every tunable number, with how it was arrived at
 spine/lease.py            expiring health leases; halt vs lapse (§11.1)
+spine/conditional.py      total probability, and the coordination guess (§5.4, §5.5)
 spine/splits.py           temporal splits that purge late-resolving examples (§8.3)
 spine/sizing.py           position limits from loss, liquidity, uncertainty (§11.2)
 spine/untrusted.py        text and links from the open internet (§11.3)
@@ -65,6 +66,7 @@ tests/test_evidence.py    evidence pipeline validation
 tests/test_shadow.py      shadow execution validation
 tests/test_params.py      the registry as a gate: no unregistered constants
 tests/test_lease.py       leases, halts, and the stale-book bug
+tests/test_conditional.py the dropped branch, and a 198x sensitivity band
 tests/test_splits.py      purging, embargo, leakage verification
 tests/test_sizing.py      sizing, concentration, and not n_eff
 tests/test_untrusted.py   bidi overrides, hostile links, SQL parameterisation
@@ -85,7 +87,7 @@ docs/history/             superseded v1 documents
 ## Validation
 
 ```bash
-python3 run_tests.py              # 18 suites, 914 checks
+python3 run_tests.py              # 19 suites, 955 checks
 python3 run_tests.py --docs       # and check what the documents claim
 ```
 
@@ -152,7 +154,7 @@ field. See `docs/EVALUATION-REPORT.md` §1.
 **Two thirds of the tunable numbers are declared, not measured.** `spine/params.py`
 registers every one with its provenance — `measured` (and which simulation
 produced it), `derived` (and from which identity), `external` (with a date,
-because those expire), or `declared`. **21 of 29 are `declared`**: somebody chose
+because those expire), or `declared`. **23 of 31 are `declared`**: somebody chose
 them and nothing in this repository supports them. That is an honest state for a
 project with no record yet, and it is worth being able to read in one go rather
 than inferring from a dozen scattered constants that all look equally like facts.

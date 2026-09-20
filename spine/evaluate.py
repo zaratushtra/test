@@ -653,7 +653,13 @@ def evaluate(
 
 
 def calibration(con: sqlite3.Connection, bins: int = 10, **filters) -> list[dict]:
-    """Calibration table from the record. Reported *alongside* skill, never instead."""
+    """
+    Calibration table from the record. Reported *alongside* skill, never instead.
+
+    §3.4: a positive Brier Skill Score can come entirely from resolution while
+    reliability stays poor, so passing the gate demonstrates skill and not
+    calibration. `Evaluation` carries both terms for the same reason.
+    """
     obs = observations(con, **filters)
     return calibration_curve(obs, bins=bins) if obs else []
 

@@ -14,7 +14,7 @@ has been demonstrated.
 **4 BUILT** · 3 blocked on live data and calendar time. The §6–§7 evidence pipeline, §10.2–§10.3
 shadow execution, the evaluation loop and the scheduled collector are all built and joined end to
 end (`tests/test_e2e.py`). **What remains blocked is live market data and four human decisions, not
-code.** 914 checks across 18 suites (`python3 run_tests.py`), plus 30 documentation-consistency
+code.** 955 checks across 19 suites (`python3 run_tests.py`), plus 30 documentation-consistency
 checks (`--docs`). Operating instructions: `docs/RUNNING.md`.
 
 **Posture: paper only.** Operations are UK-based, where Polymarket is close-only on both frontend
@@ -308,12 +308,40 @@ v1 stated `P(B) = P(B|A)·P(A)`, valid only when B cannot occur without A. Gener
 P(B) = P(B|A)·P(A) + P(B|¬A)·P(¬A)
 ```
 
+Implemented in `spine/conditional.py`. **The dropped term is not noise, it is a one-directional
+bias**: every such probability comes out low by exactly the mass of the branch ignored, and the
+answer still lies in [0, 1] and still looks like a probability, which is how the error survived.
+`marginal()` therefore takes `P(B|¬A)` as a required positional argument with no default — a default
+of zero would make v1's form the easy path — and `exclusive()` exists for the case where B genuinely
+cannot occur without A, so that claim is written somewhere a reader will find it.
+
+`forecast_edges.conditional_prob` had stored conditionals since schema v2 with nothing reading them;
+`marginal_over_edges()` does.
+
 ### 5.5 The coordination penalty is a subjective prior
 
 `p ← p·ρ^(N−1)` with ρ ≈ 0.7 does not follow from having done an incentive analysis. It is a
 made-up functional form with a made-up constant. It is retained **only** as an explicitly labelled
 subjective assumption with mandatory sensitivity testing, or replaced by explicit conditional
 scenarios whose effects are estimated.
+
+"Mandatory" is enforceable, so it is enforced. `coordination_penalty()` returns a band over a range
+of ρ and **has no attribute that yields a bare adjusted probability** — a type that can hand back a
+point estimate makes the sensitivity optional in practice however firmly the prose asks for it.
+
+Building it produced the measurement that justifies the suspicion. On a base probability of 0.6, with
+ρ ranging over 0.5–0.9:
+
+| actors | centre | band | ratio |
+|---|---|---|---|
+| 2 | 0.4200 | 0.3000 – 0.5400 | 1.8× |
+| 4 | 0.2058 | 0.0750 – 0.4374 | 5.8× |
+| 10 | 0.0242 | 0.0012 – 0.2325 | **198×** |
+
+Note which column misleads. The **absolute** spread peaks around four actors and then *narrows*,
+because both ends collapse toward zero — so a many-actor estimate can look tightly bounded while the
+choice of ρ moves it two-hundred-fold. `spread_ratio` is the quantity that matters, and
+`decision_sensitive()` answers the only question worth asking: does the guess decide the outcome?
 
 ---
 
@@ -858,7 +886,7 @@ Every tunable number is registered in `spine/params.py` with its provenance, and
 | `external` | a fact about the world or a venue, dated | re-checking, because these expire |
 | `declared` | somebody chose it | nothing here supports it |
 
-**21 of 29 are `declared`.** That is the honest state of a project with no record yet, and stating it
+**23 of 31 are `declared`.** That is the honest state of a project with no record yet, and stating it
 as a proportion is more useful than defending each one individually. A `declared` entry must name
 what would replace it — the registry refuses to construct one otherwise, because a declared
 parameter with no replacement path is indistinguishable from a measurement nobody made.

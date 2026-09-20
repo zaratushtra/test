@@ -475,7 +475,7 @@ def main() -> int:
     print(f"T1 markets: {len(t1)}   correlation clusters: {len(groups)}")
     print(f"largest clusters: {sizes[:8]}")
 
-    # n_eff is NOT monotonic in basket size. Past the number of independent
+    # n_eff is NOT monotonic in basket size (§3.3). Past the number of independent
     # clusters you are adding correlated duplicates, which raise r_bar faster
     # than n rises — so evidence per week *falls* while workload climbs. Sweep
     # to find the turn rather than assuming a basket size.

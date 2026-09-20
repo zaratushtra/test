@@ -174,6 +174,23 @@ PARAMS: list[Param] = [
           "hundred bytes into gigabytes.",
           replaced_by="nothing; this is a safety limit, not an estimate"),
 
+    Param("coordination rho", 0.70, "spine/conditional.RHO_CENTRE", DECLARED,
+          "v1's constant in p <- p*rho^(N-1). §5.5: \"a made-up functional form "
+          "with a made-up constant\", retained only as a labelled subjective "
+          "assumption with mandatory sensitivity testing — which is why "
+          "coordination_penalty() returns a band and has no attribute giving a "
+          "bare adjusted probability.",
+          replaced_by="explicit conditional scenarios whose effects are "
+                      "estimated, which §5.5 offers as the alternative to "
+                      "keeping it at all"),
+    Param("coordination rho range", "0.50-0.90", "spine/conditional.RHO_RANGE",
+          DECLARED,
+          "The sensitivity range the penalty is reported over. At ten actors "
+          "this spans a 198-fold difference in the result, which is the "
+          "measurement that justifies §5.5's suspicion of the whole device.",
+          replaced_by="the same conditional scenarios; a range around a made-up "
+                      "constant is honesty about it, not evidence for it"),
+
     Param("embargo", 7 * 86400.0, "spine/splits.DEFAULT_EMBARGO_SECONDS",
           DECLARED,
           "How long after a cutoff before a new example counts as independent "

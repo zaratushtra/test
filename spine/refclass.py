@@ -19,8 +19,9 @@ presenting a base rate.
 class was frozen after it; this closes the other end, where a member is added to
 a class after the moment it was supposedly fixed.
 
-**The selection rule is content-addressed, not a label.** §5 says a predeclared
-rule matters and "a timestamp alone proves nothing". A free-text
+**The selection rule is content-addressed, not a label.** §9.3 is blunt that
+`frozen_at < created_at` is "necessary and wildly insufficient" for "the analyst
+had not seen the case" — the control is the predeclared rule, not the timestamp. A free-text
 `selection_rule_ref` is a label, and §9.2 is explicit that committing to labels
 rather than content is how the meaning of a record changes without the record
 changing. The rule goes in a manifest and the class commits to its hash.
